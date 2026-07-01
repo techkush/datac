@@ -201,7 +201,7 @@ function blockToJson(block) {
     case 'image': b.url = block.dataset.url || ''; b.alt = block.dataset.alt || ''; break;
     case 'file': b.url = block.dataset.url || ''; b.name = block.dataset.name || 'file'; if (block.dataset.size) b.size = +block.dataset.size; b.note = noteOf(block); break;
     case 'linkfile': b.path = block.dataset.path || ''; b.name = block.dataset.name || 'file'; b.note = noteOf(block); break;
-    case 'page': b.pageId = block.dataset.pageId || ''; b.note = noteOf(block); break;
+    case 'page': b.pageId = block.dataset.pageId || ''; b.note = noteOf(block); if (block.dataset.link === '1') b.link = true; break;
     case 'code': b.text = body ? body.innerText.replace(/\n$/, '') : ''; break;
     case 'table': b.html = body ? sanitizeHtml(body.innerHTML) : ''; break;
     case 'columns': b.cols = $$(':scope > .cols-wrap > .col', block).map((col) => blocksToJson(col)); break;
@@ -229,7 +229,7 @@ function buildBlockJson(b) {
   else if (b.type === 'image') el = makeImage(b.url, b.alt);
   else if (b.type === 'file') el = makeFile(b.url, b.name, b.size, b.note);
   else if (b.type === 'linkfile') el = makeLinkFile(b.path, b.name, b.note);
-  else if (b.type === 'page') el = makePage(b.pageId, b.note);
+  else if (b.type === 'page') el = makePage(b.pageId, b.note, b.link);
   else if (b.type === 'table') el = makeTable(b.html);
   else {
     el = newBlockEl(b.type);
