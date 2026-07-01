@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "install-cli": "sh legacy/install.sh"
+    "install-cli": "node bin/install.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
