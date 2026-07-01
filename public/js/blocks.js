@@ -160,16 +160,19 @@ function openLinkedFile(filePath) {
 }
 
 // sub-page block: a file-link-style card that opens a child page, with a note
-function makePage(pageId, note) {
+// isLink: true for a "/Link to page" reference (deleting it just removes the link),
+// false/undefined for an owned sub-page (deleting it orphans the sub-page so it's recoverable)
+function makePage(pageId, note, isLink) {
   const b = newBlockEl('paragraph');
   b.dataset.type = 'page'; b.dataset.pageId = pageId;
+  if (isLink) b.dataset.link = '1';
   const body = $('.block-body', b);
   body.contentEditable = 'false';
   const child = state.docs.find((d) => d.id === pageId);
   body.appendChild(fileCard({
     icon: (child && child.icon) || '📄',
     name: (child && child.title) || 'Untitled',
-    sub: 'Page ›',
+    sub: isLink ? 'Link ›' : 'Page ›',
     note,
     open: () => openDoc(pageId),
   }));

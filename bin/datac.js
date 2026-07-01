@@ -194,6 +194,164 @@ async function cmdInit(args) {
   openInBrowser(url);
 }
 
+/* ---- setup: scaffold a workspace from a pipeline template --------------
+ * Each phase becomes a top-level PARENT page holding a to-do list; its
+ * sub-pages are linked underneath the list. `folders` are real directories
+ * created next to dataC. */
+const SETUP_TEMPLATES = {
+  research: {
+    title: 'Research', icon: '🎓',
+    folders: ['search', 'read_list', 'code_base', 'writing'],
+    phases: [
+      { title: 'Searching', icon: '🔍', steps: [
+        'Abstract the topic — distil the research question into a focused query.',
+        'Get search results via Perplexity.',
+        'Deep research via Gemini.',
+        'Create a PDF of the compiled findings.',
+        'Send to iPad for offline review.',
+      ], subpages: ['Abstract', 'Perplexity Report', 'Deep Research Report'] },
+      { title: 'Reading & Listening', icon: '🎧', steps: [
+        'Create a Notebook in NotebookLM — Audio (Sinhala & English), Flashcards, Mindmap, Infographics, Brief Document.',
+        'Listen to audio reviews while working.',
+        'Read full deep-research documents.',
+        'Highlight key points & papers needing deeper reading.',
+        'Download & read papers — collect the semantic idea and how they did the POC.',
+      ], subpages: [] },
+      { title: 'Coding & Testing', icon: '⚙️', steps: [
+        'Plan the experimental idea.',
+        'Prompting — design and refine prompts.',
+        'Coding — implement the experiment.',
+        'Testing — validate the implementation.',
+        'Generate proper results.',
+      ], subpages: ['Planning', 'Prompts', 'Testing Results', 'Final Results'] },
+      { title: 'Writing', icon: '✍️', steps: [
+        'Methodology & Results — write briefly, read & brief the document, then revise.',
+        'Introduction & Related Works — write briefly, read & brief the document, then revise.',
+        'Conclusion & Abstract — write, then read & revise the full document.',
+        'Send to supervisor to get feedback.',
+      ], subpages: ['Methodology', 'Results', 'Introduction', 'Related Works', 'Conclusion', 'Abstract', 'Supervisor Report'] },
+    ],
+  },
+  mobileapp: {
+    title: 'Mobile App', icon: '📱',
+    folders: ['planning', 'prompts', 'code', 'deploy'],
+    phases: [
+      { title: 'Planning', icon: '🧭', steps: [
+        'Open the document to start capturing the plan.',
+        'Write down the ideas for the app.',
+        'List key features & functions.',
+        'Select the frameworks to build with.',
+      ], subpages: ['Main Idea', 'Key Features', 'Technology and Diagrams'] },
+      { title: 'Prompting', icon: '💬', steps: [
+        'List the essential prompts for Claude in the document.',
+      ], subpages: [] },
+      { title: 'Coding & Testing', icon: '⚙️', steps: [
+        'Code one prompt at a time.',
+        'Test with a real device.',
+      ], subpages: [] },
+      { title: 'Deploying', icon: '🚀', steps: [
+        'Check for security issues before release.',
+        'Deploy to the App Store — test version.',
+        'Deploy to the Play Store — test version.',
+      ], subpages: ['Appstore Details', 'Playstore Details'] },
+    ],
+  },
+};
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// build the page docs: one top-level parent page per phase (to-do list + linked sub-pages)
+function buildTemplateDocs(tpl) {
+  const base = Date.now();
+  let seq = 0;
+  const bid = () => 'b' + (seq++).toString(36) + crypto.randomBytes(2).toString('hex');
+  const iso = (ms) => new Date(ms).toISOString();
+  const docs = [];
+
+  tpl.phases.forEach((ph, pi) => {
+    const parentId = crypto.randomBytes(8).toString('hex');
+    const parentCreated = iso(base + pi * 2000);          // ordered oldest→newest in the sidebar
+    const links = [];
+    (ph.subpages || []).forEach((sub, si) => {
+      const subId = crypto.randomBytes(8).toString('hex');
+      docs.push({ id: subId, doc: {
+        title: sub, icon: '📄', cover: '', parent: parentId, orphaned: false, status: 'not-started',
+        created: iso(base + pi * 2000 + (si + 1) * 20), updated: parentCreated,
+        blocks: [{ id: bid(), type: 'paragraph', html: '' }], comments: {},
+      } });
+      links.push({ id: bid(), type: 'page', pageId: subId, note: '' });
+    });
+
+    const blocks = ph.steps.map((s) => ({ id: bid(), type: 'todo', html: esc(s) }));
+    if (links.length) {                                   // connect sub-pages under the to-do list
+      blocks.push({ id: bid(), type: 'divider' });
+      blocks.push({ id: bid(), type: 'h3', html: 'Sub-pages' });
+      blocks.push(...links);
+    }
+    docs.push({ id: parentId, doc: {
+      title: ph.title, icon: ph.icon || '📄', cover: '', parent: '', orphaned: false, status: 'not-started',
+      created: parentCreated, updated: parentCreated, blocks, comments: {},
+    } });
+  });
+
+  return { docs };
+}
+
+async function cmdSetup(args) {
+  const key = (args[0] || '').toLowerCase();
+  const tpl = SETUP_TEMPLATES[key];
+  if (!tpl) {
+    console.error(C.red('✗'), 'unknown template.');
+    console.error('  usage:', C.bold('datac setup research "<name>"'));
+    process.exit(1);
+  }
+  const name = args.slice(1).join(' ').trim() || tpl.title;
+  const cwd = process.cwd();
+  const dataDir = path.join(cwd, 'dataC');
+
+  // refuse up front if this folder is already a workspace — never overwrite notes,
+  // and fail loudly so it's obvious nothing was scaffolded
+  let existing = false;
+  try { existing = fs.readdirSync(dataDir).some((f) => f.endsWith('.json') || f.endsWith('.md')); } catch (_) {}
+  if (existing) {
+    console.error(C.red('✗'), 'this folder already has a datac workspace — nothing was created.');
+    console.error('  ' + C.dim('setup only scaffolds into an empty folder. Options:'));
+    console.error('  ' + C.dim('  • open the existing one:  ') + C.bold('datac open'));
+    console.error('  ' + C.dim('  • scaffold in a new one:  ') + C.bold(`mkdir my-${key} && cd my-${key} && datac setup ${key} "<name>"`));
+    process.exit(1);
+  }
+
+  await fsp.mkdir(path.join(dataDir, 'files'), { recursive: true });
+
+  // real project folders next to dataC
+  for (const f of tpl.folders) await fsp.mkdir(path.join(cwd, f), { recursive: true });
+
+  // register workspace
+  const reg = loadRegistry();
+  const id = findExistingId(reg, dataDir) || crypto.randomBytes(8).toString('hex');
+  const url = `${BASE}/w/${id}`;
+  reg[id] = { id, title: name, projectDir: cwd, dataDir, created: reg[id] ? reg[id].created : nowISO(), opened: nowISO() };
+  saveRegistry(reg);
+
+  // open.dc manifest
+  const dcPath = path.join(cwd, 'open.dc');
+  await fsp.writeFile(dcPath, JSON.stringify({ app: 'datac', id, title: name, projectDir: cwd, dataDir, url, opened: nowISO() }, null, 2) + '\n');
+  setFileIcon(dcPath);
+
+  // write the pages (folder is empty — verified above)
+  const { docs } = buildTemplateDocs(tpl);
+  for (const { id: did, doc } of docs) fs.writeFileSync(path.join(dataDir, did + '.json'), JSON.stringify(doc, null, 2));
+  console.log(C.green('✓'), `created ${C.bold(docs.length + ' pages')} for ${C.bold(name)}`);
+  tpl.phases.forEach((ph) => console.log('  ' + C.dim('  •') + ' ' + ph.title + (ph.subpages && ph.subpages.length ? C.dim(`  (${ph.subpages.length} sub-pages)`) : '')));
+  console.log('  ' + C.dim('folders ') + tpl.folders.map((f) => f + '/').join('  '));
+
+  console.log(C.green('✓'), `workspace ${C.bold(name)} ready`);
+  console.log('  ' + C.dim('notes  ') + path.relative(cwd, dataDir) + '/');
+  if (!(await startDaemon())) { console.error(C.red('✗'), 'could not start the datac daemon'); process.exit(1); }
+  console.log('  ' + C.dim('opening ') + C.cyan(url));
+  openInBrowser(url);
+}
+
 async function cmdOpen(args) {
   let target = args[0] ? path.resolve(args[0]) : process.cwd();
   // accept a folder or a path to an open.dc
@@ -322,6 +480,7 @@ function help() {
 
 ${C.bold('Usage')}
   datac init [title]     Create dataC/ + open.dc here, start the app, open in browser
+  datac setup <tpl> "<name>"  Scaffold a workspace (tpl: research | mobileapp) + project folders
   datac open [path]      Open a workspace (folder or open.dc) in the browser
   datac list             List registered workspaces
   datac start            Start the always-running daemon
@@ -344,6 +503,7 @@ ${C.bold('Example')}
   try {
     switch (cmd) {
       case 'init': await cmdInit(args); break;
+      case 'setup': await cmdSetup(args); break;
       case 'open': await cmdOpen(args); break;
       case 'list': case 'ls': cmdList(); break;
       case 'start': await startDaemon().then((ok) => console.log(ok ? C.green('✓ daemon running ') + C.cyan(BASE) : C.red('✗ failed to start'))); break;

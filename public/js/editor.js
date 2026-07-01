@@ -296,7 +296,7 @@ function applySlash(i) {
     const targetBlock = block;
     // open the picker on the next tick so this mousedown doesn't immediately close it
     setTimeout(() => openPagePicker(targetBlock, (pageId) => {
-      const el = makePage(pageId);
+      const el = makePage(pageId, undefined, true);
       targetBlock.replaceWith(el);
       const nb = newBlockEl('paragraph'); el.after(nb);
       refresh(); placeCaret($('.block-body', nb)); ensureTrailingParagraph(); captureHistory(); queueSave();

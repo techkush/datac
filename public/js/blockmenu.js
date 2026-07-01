@@ -99,8 +99,9 @@ function deleteBlock(block) {
   const focusTarget = prevTextBlock(block) || nextTextBlock(block);
   const parent = block.parentElement;
   if (block.dataset.bid) { delete state.comments[block.dataset.bid]; delete state.styles[block.dataset.bid]; }
-  // removing a page link doesn't destroy the sub-page — flag it orphaned so it's recoverable
-  if (block.dataset.type === 'page' && block.dataset.pageId) orphanPage(block.dataset.pageId);
+  // deleting an owned sub-page card flags the page orphaned so it's recoverable;
+  // deleting a "/Link to page" reference (data-link) just removes the link — the page stays put
+  if (block.dataset.type === 'page' && block.dataset.pageId && block.dataset.link !== '1') orphanPage(block.dataset.pageId);
   block.remove();
   if (parent && parent.classList.contains('col')) {
     // emptying a column removes it; remaining columns shift left (or collapse to normal blocks)
