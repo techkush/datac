@@ -6,7 +6,7 @@ import { useRuntime } from "./runtime";
 import { BlockList } from "./block-list";
 import type { Block } from "@/lib/datac/types";
 import { isEditable, isTextType, newBlock } from "./blocks-util";
-import { renderInline } from "@/lib/datac/markdown";
+import { sanitizeHtml } from "@/lib/datac/markdown";
 import { renderMathHtml } from "@/lib/datac/math";
 import { formatSize } from "@/lib/datac/upload";
 import { cn } from "@/lib/utils";
@@ -44,7 +44,10 @@ function EditableBody({
       rt.register(block.id, el);
       if (el && lastHtml.current === null) {
         if (isCode) el.innerText = value;
-        else el.innerHTML = renderInline(value);
+        // block.html is canonical HTML (already entity-escaped) — render it as
+        // HTML, never through the markdown path, or entities get re-escaped
+        // (&amp; -> &amp;amp;) on every serialize (e.g. ticking a todo).
+        else el.innerHTML = sanitizeHtml(value);
         lastHtml.current = value;
         updateEmpty(el, placeholder);
       }
@@ -61,7 +64,10 @@ function EditableBody({
       const focused = document.activeElement === el;
       if (!focused) {
         if (isCode) el.innerText = value;
-        else el.innerHTML = renderInline(value);
+        // block.html is canonical HTML (already entity-escaped) — render it as
+        // HTML, never through the markdown path, or entities get re-escaped
+        // (&amp; -> &amp;amp;) on every serialize (e.g. ticking a todo).
+        else el.innerHTML = sanitizeHtml(value);
         lastHtml.current = value;
         updateEmpty(el, placeholder);
       }
