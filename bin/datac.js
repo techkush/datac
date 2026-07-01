@@ -21,7 +21,10 @@ const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 
 const APP_DIR = path.join(__dirname, '..');
-const SERVER = path.join(APP_DIR, 'server.js');
+// The Next.js standalone server (present in an installed ~/.datac/app), or a
+// dev/repo checkout where we fall back to `next start`.
+const STANDALONE_SERVER = path.join(APP_DIR, 'server.js');
+const NEXT_BIN = path.join(APP_DIR, 'node_modules', 'next', 'dist', 'bin', 'next');
 const DATAC_HOME = process.env.DATAC_HOME || path.join(os.homedir(), '.datac');
 const REGISTRY = path.join(DATAC_HOME, 'workspaces.json');
 const DAEMON_FILE = path.join(DATAC_HOME, 'daemon.json');
@@ -55,17 +58,41 @@ async function startDaemon() {
   if (await daemonRunning()) return true;
   ensureHome();
   const out = fs.openSync(LOG_FILE, 'a');
-  const child = spawn(process.execPath, [SERVER], {
+  const env = {
+    ...process.env,
+    DATAC_HOME,
+    DATAC_PORT: String(PORT),
+    PORT: String(PORT),
+    HOSTNAME: '127.0.0.1',
+    NODE_ENV: 'production',
+  };
+
+  let cmd, cmdArgs;
+  if (fs.existsSync(STANDALONE_SERVER)) {
+    // installed app: run the Next.js standalone server
+    cmd = process.execPath;
+    cmdArgs = [STANDALONE_SERVER];
+  } else if (fs.existsSync(NEXT_BIN)) {
+    // dev/repo checkout: run `next start` (requires a prior `next build`)
+    cmd = process.execPath;
+    cmdArgs = [NEXT_BIN, 'start', '-p', String(PORT), '-H', '127.0.0.1'];
+  } else {
+    console.error(C.red('✗'), 'no server found — run `npm run build` first, or reinstall datac.');
+    return false;
+  }
+
+  const child = spawn(cmd, cmdArgs, {
     detached: true,
     stdio: ['ignore', out, out],
-    env: { ...process.env, DATAC_HOME, DATAC_PORT: String(PORT) },
+    cwd: APP_DIR,
+    env,
   });
   child.unref();
   writeJSON(DAEMON_FILE, { pid: child.pid, port: PORT, started: nowISO() });
-  // wait for it to come up
-  for (let i = 0; i < 50; i++) {
+  // Next takes a moment to boot — wait up to ~15s.
+  for (let i = 0; i < 100; i++) {
     if (await ping()) return true;
-    await sleep(100);
+    await sleep(150);
   }
   return await ping();
 }

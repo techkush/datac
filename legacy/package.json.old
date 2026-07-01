@@ -1,0 +1,13 @@
+{
+  "name": "datac",
+  "version": "1.0.0",
+  "description": "A local, system-wide Notion-style notes app. `datac init` in any folder creates a dataC/ notes workspace and opens it in the browser; one background daemon serves them all.",
+  "bin": {
+    "datac": "bin/datac.js"
+  },
+  "scripts": {
+    "install-cli": "sh install.sh",
+    "daemon": "node server.js"
+  },
+  "private": true
+}
