@@ -303,6 +303,19 @@ async function cmdSetup(args) {
   }
   const cwd = process.cwd();
   const dataDir = path.join(cwd, 'dataC');
+
+  // refuse up front if this folder is already a workspace — never overwrite notes,
+  // and fail loudly so it's obvious nothing was scaffolded
+  let existing = false;
+  try { existing = fs.readdirSync(dataDir).some((f) => f.endsWith('.json') || f.endsWith('.md')); } catch (_) {}
+  if (existing) {
+    console.error(C.red('✗'), 'this folder already has a datac workspace — nothing was created.');
+    console.error('  ' + C.dim('setup only scaffolds into an empty folder. Options:'));
+    console.error('  ' + C.dim('  • open the existing one:  ') + C.bold('datac open'));
+    console.error('  ' + C.dim('  • scaffold in a new one:  ') + C.bold(`mkdir my-${key} && cd my-${key} && datac setup ${key}`));
+    process.exit(1);
+  }
+
   await fsp.mkdir(path.join(dataDir, 'files'), { recursive: true });
 
   // register workspace
@@ -317,16 +330,11 @@ async function cmdSetup(args) {
   await fsp.writeFile(dcPath, JSON.stringify({ app: 'datac', id, title: tpl.title, projectDir: cwd, dataDir, url, opened: nowISO() }, null, 2) + '\n');
   setFileIcon(dcPath);
 
-  // write the pages — only if this workspace has none yet (never overwrite existing notes)
-  const hasDocs = fs.readdirSync(dataDir).some((f) => f.endsWith('.json') || f.endsWith('.md'));
-  if (hasDocs) {
-    console.log('  ' + C.dim('workspace already has pages — leaving them as-is.'));
-  } else {
-    const { docs } = buildTemplateDocs(tpl);
-    for (const { id: did, doc } of docs) fs.writeFileSync(path.join(dataDir, did + '.json'), JSON.stringify(doc, null, 2));
-    console.log(C.green('✓'), `created ${C.bold(docs.length + ' pages')} for ${C.bold(tpl.title)}`);
-    tpl.phases.forEach((ph) => console.log('  ' + C.dim('  •') + ' ' + ph.title));
-  }
+  // write the pages (folder is empty — verified above)
+  const { docs } = buildTemplateDocs(tpl);
+  for (const { id: did, doc } of docs) fs.writeFileSync(path.join(dataDir, did + '.json'), JSON.stringify(doc, null, 2));
+  console.log(C.green('✓'), `created ${C.bold(docs.length + ' pages')} for ${C.bold(tpl.title)}`);
+  tpl.phases.forEach((ph) => console.log('  ' + C.dim('  •') + ' ' + ph.title));
 
   console.log(C.green('✓'), `workspace ${C.bold(tpl.title)} ready`);
   console.log('  ' + C.dim('notes  ') + path.relative(cwd, dataDir) + '/');
