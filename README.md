@@ -3,10 +3,12 @@
 `datac` turns **any folder** into a private notes workspace. Run one command in a
 project folder and it opens a block-based editor in your browser — pages, sub-pages,
 columns, tables, files, comments, status, and more. Everything is stored **locally**
-as JSON on your machine. No accounts, no cloud, no build step.
+as JSON on your machine. No accounts, no cloud.
 
-One always-running local server (a small, dependency-free Node daemon) serves every
-workspace at `http://localhost:4321`.
+Built with **Next.js (App Router) + React + Tailwind v4 + shadcn/ui**. One
+always-running local daemon (the Next.js standalone server) serves every workspace at
+`http://localhost:4321`. The on-disk format is unchanged, so notes created by earlier
+versions keep working.
 
 ![datac screenshot](assets/screenshot.png)
 
@@ -17,7 +19,7 @@ workspace at `http://localhost:4321`.
 - **macOS** (some features — the native file picker, "open file/folder", and the
   double-click `.dc` handler — use macOS tools). The editor itself works in any
   modern browser.
-- **[Node.js](https://nodejs.org)** 18 or newer. Check with `node --version`.
+- **[Node.js](https://nodejs.org)** 20 or newer (required by Next.js 16). Check with `node --version`.
 
 ---
 
@@ -28,12 +30,13 @@ workspace at `http://localhost:4321`.
 git clone https://github.com/techkush/datac.git
 cd datac
 
-# 2. Install (copies the app to ~/.datac/app and puts a `datac` command on your PATH)
-sh install.sh
+# 2. Install (builds the app, copies it to ~/.datac/app, puts a `datac` command on your PATH)
+npm install
+npm run install-cli
 ```
 
 If you downloaded a ZIP instead of cloning, just `cd` into the unzipped folder and run
-`sh install.sh`.
+`npm install && npm run install-cli`.
 
 The installer:
 - copies the app into `~/.datac/app` (self-contained — the source folder is only used
@@ -201,7 +204,8 @@ Pull/download the latest code and re-run the installer from the source folder:
 
 ```bash
 git pull        # (or download the new version)
-sh install.sh
+npm install
+npm run install-cli
 datac restart
 ```
 

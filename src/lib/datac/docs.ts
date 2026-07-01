@@ -194,6 +194,10 @@ export async function saveDoc(
   };
   await fsp.mkdir(dataDir, { recursive: true });
   await fsp.writeFile(jf, JSON.stringify(out, null, 2), "utf8");
+  // migrated from legacy markdown — drop the stale .md so it isn't left behind
+  try {
+    await fsp.unlink(path.join(dataDir, id + ".md"));
+  } catch {}
   return { id, title: out.title, icon: out.icon, updated, created };
 }
 
