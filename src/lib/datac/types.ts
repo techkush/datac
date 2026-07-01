@@ -16,7 +16,10 @@ export type BlockType =
   | "image"
   | "math"
   | "page"
-  | "columns";
+  | "columns"
+  | "file"
+  | "linkfile"
+  | "table";
 
 export interface Block {
   id: string;

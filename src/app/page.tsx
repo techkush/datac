@@ -1,46 +1,34 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { readRegistry } from "@/lib/datac/registry";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  WorkspacesList,
+  type WorkspaceRow,
+} from "@/components/workspaces/workspaces-list";
 
-export default function Home() {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const reg = await readRegistry();
+  const rows: WorkspaceRow[] = Object.entries(reg)
+    .sort((a, b) =>
+      String(b[1].opened || "").localeCompare(String(a[1].opened || "")),
+    )
+    .map(([id, w]) => ({
+      id,
+      title: w.title || "Untitled",
+      projectDir: w.projectDir || "",
+    }));
+
   return (
-    <main className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
+    <main className="mx-auto flex min-h-svh max-w-2xl flex-col gap-8 px-6 py-16">
       <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-primary text-xl leading-none">◆</span>
-          <span className="text-lg font-semibold tracking-tight">datac</span>
-          <Badge variant="secondary">Next.js</Badge>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          <span className="text-primary">◆</span> datac workspaces
+        </h1>
         <ThemeToggle />
       </header>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Phase 1 — scaffold &amp; theme</CardTitle>
-          <CardDescription>
-            Next.js (App Router) + Tailwind v4 + shadcn/ui, wired to the datac
-            theme. Toggle the button above to verify light/dark.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          <Button>Primary</Button>
-          <Button variant="secondary">Secondary</Button>
-          <Button variant="outline">Outline</Button>
-          <Button variant="ghost">Ghost</Button>
-          <Button variant="destructive">Destructive</Button>
-        </CardContent>
-      </Card>
-
-      <p className="text-muted-foreground text-sm">
-        The workspaces launcher and editor arrive in later phases.
-      </p>
+      <WorkspacesList initial={rows} />
     </main>
   );
 }
