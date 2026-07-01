@@ -194,6 +194,147 @@ async function cmdInit(args) {
   openInBrowser(url);
 }
 
+/* ---- setup: scaffold a workspace from a pipeline template -------------- */
+const SETUP_TEMPLATES = {
+  research: {
+    title: 'PhD Research Pipeline', icon: '🎓', cover: 'grad:0',
+    intro: 'Search → Read & Listen → Code & Test → Write — an end-to-end workflow.',
+    phases: [
+      { title: '1 · Searching', icon: '🔍', steps: [
+        'Abstract the topic — distil the research question into a focused query.',
+        'Get search results via Perplexity.',
+        'Deep research via Gemini.',
+        'Create a PDF of the compiled findings.',
+        'Send to iPad for offline review.',
+      ] },
+      { title: '2 · Reading & Listening', icon: '🎧', steps: [
+        'Create a Notebook in NotebookLM — Audio (Sinhala & English), Flashcards, Mindmap, Infographics, Brief Document.',
+        'Listen to audio reviews while working.',
+        'Read full deep-research documents.',
+        'Highlight key points & papers needing deeper reading.',
+        'Download & read papers — collect the semantic idea and how they did the POC.',
+      ] },
+      { title: '3 · Coding & Testing', icon: '⚙️', steps: [
+        'Plan the experimental idea.',
+        'Prompting — design and refine prompts.',
+        'Coding — implement the experiment.',
+        'Testing — validate the implementation.',
+        'Generate proper results.',
+      ] },
+      { title: '4 · Writing', icon: '✍️', steps: [
+        'Methodology & Results — write briefly, read & brief the document, then revise.',
+        'Introduction & Related Works — write briefly, read & brief the document, then revise.',
+        'Conclusion & Abstract — write, then read & revise the full document.',
+        'Send to supervisor to get feedback.',
+      ] },
+    ],
+  },
+  mobileapp: {
+    title: 'Mobile App Development Pipeline', icon: '📱', cover: 'grad:2',
+    intro: 'Plan → Prompt → Code & Test → Deploy — an end-to-end workflow.',
+    phases: [
+      { title: '1 · Planning', icon: '🧭', steps: [
+        'Open the document to start capturing the plan.',
+        'Write down the ideas for the app.',
+        'List key features & functions.',
+        'Select the frameworks to build with.',
+      ] },
+      { title: '2 · Prompting', icon: '💬', steps: [
+        'List the essential prompts for Claude in the document.',
+      ] },
+      { title: '3 · Coding & Testing', icon: '⚙️', steps: [
+        'Code one prompt at a time.',
+        'Test with a real device.',
+      ] },
+      { title: '4 · Deploying', icon: '🚀', steps: [
+        'Check for security issues before release.',
+        'Deploy to the App Store — test version.',
+        'Deploy to the Play Store — test version.',
+      ] },
+    ],
+  },
+};
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// build the page docs (root + one sub-page per phase) for a template
+function buildTemplateDocs(tpl) {
+  const now = nowISO();
+  let seq = 0;
+  const bid = () => 'b' + (seq++).toString(36) + crypto.randomBytes(2).toString('hex');
+  const rootId = crypto.randomBytes(8).toString('hex');
+  const docs = [];
+  const links = [];
+
+  tpl.phases.forEach((ph) => {
+    const cid = crypto.randomBytes(8).toString('hex');
+    const blocks = [
+      { id: bid(), type: 'h2', html: esc(ph.title) },
+      ...ph.steps.map((s) => ({ id: bid(), type: 'todo', html: esc(s) })),
+    ];
+    docs.push({ id: cid, doc: {
+      title: ph.title, icon: ph.icon || '📄', cover: '', parent: rootId, orphaned: false, status: 'not-started',
+      created: now, updated: now, blocks, comments: {},
+    } });
+    links.push({ id: bid(), type: 'page', pageId: cid, note: '' });
+  });
+
+  const rootBlocks = [
+    { id: bid(), type: 'paragraph', html: esc(tpl.intro) },
+    { id: bid(), type: 'divider' },
+    { id: bid(), type: 'h3', html: 'Phases' },
+    ...links,
+  ];
+  docs.unshift({ id: rootId, doc: {
+    title: tpl.title, icon: tpl.icon, cover: tpl.cover || '', parent: '', orphaned: false, status: 'not-started',
+    created: now, updated: now, blocks: rootBlocks, comments: {},
+  } });
+
+  return { rootId, docs };
+}
+
+async function cmdSetup(args) {
+  const key = (args[0] || '').toLowerCase();
+  const tpl = SETUP_TEMPLATES[key];
+  if (!tpl) {
+    console.error(C.red('✗'), 'unknown template.');
+    console.error('  usage:', C.bold('datac setup [research|mobileapp]'));
+    process.exit(1);
+  }
+  const cwd = process.cwd();
+  const dataDir = path.join(cwd, 'dataC');
+  await fsp.mkdir(path.join(dataDir, 'files'), { recursive: true });
+
+  // register workspace
+  const reg = loadRegistry();
+  const id = findExistingId(reg, dataDir) || crypto.randomBytes(8).toString('hex');
+  const url = `${BASE}/w/${id}`;
+  reg[id] = { id, title: tpl.title, projectDir: cwd, dataDir, created: reg[id] ? reg[id].created : nowISO(), opened: nowISO() };
+  saveRegistry(reg);
+
+  // open.dc manifest
+  const dcPath = path.join(cwd, 'open.dc');
+  await fsp.writeFile(dcPath, JSON.stringify({ app: 'datac', id, title: tpl.title, projectDir: cwd, dataDir, url, opened: nowISO() }, null, 2) + '\n');
+  setFileIcon(dcPath);
+
+  // write the pages — only if this workspace has none yet (never overwrite existing notes)
+  const hasDocs = fs.readdirSync(dataDir).some((f) => f.endsWith('.json') || f.endsWith('.md'));
+  if (hasDocs) {
+    console.log('  ' + C.dim('workspace already has pages — leaving them as-is.'));
+  } else {
+    const { docs } = buildTemplateDocs(tpl);
+    for (const { id: did, doc } of docs) fs.writeFileSync(path.join(dataDir, did + '.json'), JSON.stringify(doc, null, 2));
+    console.log(C.green('✓'), `created ${C.bold(docs.length + ' pages')} for ${C.bold(tpl.title)}`);
+    tpl.phases.forEach((ph) => console.log('  ' + C.dim('  •') + ' ' + ph.title));
+  }
+
+  console.log(C.green('✓'), `workspace ${C.bold(tpl.title)} ready`);
+  console.log('  ' + C.dim('notes  ') + path.relative(cwd, dataDir) + '/');
+  if (!(await startDaemon())) { console.error(C.red('✗'), 'could not start the datac daemon'); process.exit(1); }
+  console.log('  ' + C.dim('opening ') + C.cyan(url));
+  openInBrowser(url);
+}
+
 async function cmdOpen(args) {
   let target = args[0] ? path.resolve(args[0]) : process.cwd();
   // accept a folder or a path to an open.dc
@@ -322,6 +463,7 @@ function help() {
 
 ${C.bold('Usage')}
   datac init [title]     Create dataC/ + open.dc here, start the app, open in browser
+  datac setup <template> Scaffold a workspace from a template: research | mobileapp
   datac open [path]      Open a workspace (folder or open.dc) in the browser
   datac list             List registered workspaces
   datac start            Start the always-running daemon
@@ -344,6 +486,7 @@ ${C.bold('Example')}
   try {
     switch (cmd) {
       case 'init': await cmdInit(args); break;
+      case 'setup': await cmdSetup(args); break;
       case 'open': await cmdOpen(args); break;
       case 'list': case 'ls': cmdList(); break;
       case 'start': await startDaemon().then((ok) => console.log(ok ? C.green('✓ daemon running ') + C.cyan(BASE) : C.red('✗ failed to start'))); break;
