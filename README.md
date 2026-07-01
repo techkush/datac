@@ -90,7 +90,7 @@ default automatically; otherwise do a one-time *Get Info → Open With → DataC
 | Command | What it does |
 |---|---|
 | `datac init [title]` | Create `dataC/` + `open.dc` here and open it |
-| `datac setup <template>` | Scaffold a workspace from a template (`research`, `mobileapp`) |
+| `datac setup <template> "<name>"` | Scaffold a named workspace from a template (`research`, `mobileapp`) — creates project folders + parent pages with to-do lists and sub-pages |
 | `datac open [path]` | Open an existing workspace (folder or `open.dc`) |
 | `datac list` | List registered workspaces |
 | `datac start` / `stop` / `restart` | Manage the background daemon |
