@@ -23,7 +23,7 @@ workspace at `http://localhost:4321`.
 
 ```bash
 # 1. Get the code
-git clone <your-repo-url> datac
+git clone https://github.com/techkush/datac.git
 cd datac
 
 # 2. Install (copies the app to ~/.datac/app and puts a `datac` command on your PATH)
