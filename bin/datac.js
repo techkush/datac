@@ -241,7 +241,7 @@ const SETUP_TEMPLATES = {
         'Write down the ideas for the app.',
         'List key features & functions.',
         'Select the frameworks to build with.',
-      ], subpages: [] },
+      ], subpages: ['Main Idea', 'Key Features', 'Technology and Diagrams'] },
       { title: 'Prompting', icon: '💬', steps: [
         'List the essential prompts for Claude in the document.',
       ], subpages: [] },
@@ -253,7 +253,7 @@ const SETUP_TEMPLATES = {
         'Check for security issues before release.',
         'Deploy to the App Store — test version.',
         'Deploy to the Play Store — test version.',
-      ], subpages: [] },
+      ], subpages: ['Appstore Details', 'Playstore Details'] },
     ],
   },
 };
