@@ -85,6 +85,56 @@ default automatically; otherwise do a one-time *Get Info → Open With → DataC
 
 ---
 
+## Templates (`datac setup`)
+
+`datac setup` scaffolds a ready-to-use workspace from a **template** instead of an empty
+one. Run it in a fresh folder and give the workspace a name:
+
+```bash
+mkdir ~/projects/my-thesis && cd ~/projects/my-thesis
+datac setup research "Frog-Inspired Semantic Comms"
+```
+
+That one command:
+
+- creates the workspace (`dataC/` + `open.dc`) and starts the app,
+- creates **real project folders** next to it so your files have a home from day one,
+- creates one **top-level page per phase**, each holding a **to-do list** for that phase,
+  with the phase's **sub-pages linked underneath the list**,
+- opens it in your browser.
+
+`setup` only writes into an **empty** folder — it never touches an existing workspace. If
+the folder already has one, it stops and tells you (open the existing one, or `mkdir` a new
+folder first).
+
+### `research` — a PhD / paper research pipeline
+
+Project folders: `search/`, `read_list/`, `code_base/`, `writing/`
+
+| Phase page (with to-do list) | Sub-pages |
+|---|---|
+| 🔍 **Searching** | Abstract · Perplexity Report · Deep Research Report |
+| 🎧 **Reading & Listening** | *(to-do list only)* |
+| ⚙️ **Coding & Testing** | Planning · Prompts · Testing Results · Final Results |
+| ✍️ **Writing** | Methodology · Results · Introduction · Related Works · Conclusion · Abstract · Supervisor Report |
+
+### `mobileapp` — a mobile app build pipeline
+
+Project folders: `planning/`, `prompts/`, `code/`, `deploy/`
+
+| Phase page (with to-do list) | Sub-pages |
+|---|---|
+| 🧭 **Planning** | Main Idea · Key Features · Technology and Diagrams |
+| 💬 **Prompting** | *(to-do list only)* |
+| ⚙️ **Coding & Testing** | *(to-do list only)* |
+| 🚀 **Deploying** | Appstore Details · Playstore Details |
+
+The phase pages are ordered oldest-first so the sidebar shows them in pipeline order. Each
+sub-page starts blank — fill it in as you go. Everything after scaffolding is a normal
+workspace: rename pages, add blocks, change statuses, add more sub-pages, whatever you need.
+
+---
+
 ## Commands
 
 | Command | What it does |
