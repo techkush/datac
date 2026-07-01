@@ -159,6 +159,11 @@ The daemon starts automatically on `init` / `open`, so you rarely need `start`/`
   turn into, text & background colors).
 - **Slash menu** — press `/` to insert any block, plus **columns** (2–5), **tables**,
   **images**, **files**, and page links.
+- **Math / equations** — `/Math` opens a side panel: paste messy math copied from
+  ChatGPT, a website or a PDF and it's **auto-cleaned into LaTeX** (Greek letters, sub/
+  superscripts, hats, symbols), which you edit with a **live preview** before inserting.
+  Equations render with a locally-bundled [KaTeX](https://katex.org) — no CDN, works
+  offline. Click any equation to edit it again.
 - **Pages & sub-pages** — `/Page` makes a nested sub-page (shown as a tree in the
   sidebar with a status dot); `/Link to page` links to an existing page. Breadcrumbs
   navigate up the tree; deleted sub-pages go to an **Orphaned pages** section and can be

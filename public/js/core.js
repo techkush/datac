@@ -65,6 +65,7 @@ const BLOCK_TYPES = [
   { type: 'todo', label: 'To-do list', desc: 'Checkbox to track tasks', icon: '☑', keys: 'todo check task box' },
   { type: 'quote', label: 'Quote', desc: 'Capture a quotation', icon: '❝', keys: 'quote blockquote' },
   { type: 'code', label: 'Code', desc: 'Code block', icon: '</>', keys: 'code snippet pre' },
+  { type: 'math', label: 'Math / Equation', desc: 'Paste & correct math (LaTeX)', icon: '∑', keys: 'math equation formula latex tex katex correct paste', action: 'math' },
   { type: 'divider', label: 'Divider', desc: 'Horizontal rule', icon: '—', keys: 'divider hr line rule', action: 'divider' },
   { type: 'image', label: 'Image', desc: 'Upload a picture', icon: '🖼', keys: 'image picture photo figure', action: 'image' },
   { type: 'file', label: 'File', desc: 'Upload a file into dataC', icon: '📎', keys: 'file attachment document upload', action: 'file' },
