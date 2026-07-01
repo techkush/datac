@@ -44,6 +44,10 @@ interface EditorContextValue {
   setComments: (c: Record<string, CommentEntry[]>) => void;
   saveNow: (keepalive?: boolean) => Promise<void>;
   exportMarkdown: (id?: string) => Promise<void>;
+  // The editor registers a serializer that reads live block content from the
+  // DOM; the store calls it when building the doc to save.
+  setSerializer: (fn: (() => Block[]) | null) => void;
+  scheduleSave: () => void;
 }
 
 export interface CommentEntry {
@@ -106,15 +110,24 @@ export function EditorProvider({
     setDocs(await client.list());
   }, [client]);
 
+  const serializerRef = React.useRef<(() => Block[]) | null>(null);
+  const setSerializer = React.useCallback((fn: (() => Block[]) | null) => {
+    serializerRef.current = fn;
+  }, []);
+
   const buildDocFields = React.useCallback(() => {
     const m = metaRef.current;
+    const blocks = serializerRef.current
+      ? serializerRef.current()
+      : blocksRef.current;
+    blocksRef.current = blocks;
     return {
       title: m.title.trim() || "Untitled",
       icon: m.icon,
       cover: m.cover,
       parent: m.parent,
       status: m.status,
-      blocks: blocksRef.current,
+      blocks,
       comments: commentsRef.current as Record<string, unknown>,
     };
   }, []);
@@ -210,6 +223,8 @@ export function EditorProvider({
         status: doc.status || "",
       };
       const nextComments = (doc.comments || {}) as Record<string, CommentEntry[]>;
+      // Drop the previous doc's DOM serializer; the new editor re-registers.
+      serializerRef.current = null;
       metaRef.current = nextMeta;
       blocksRef.current = nextBlocks;
       commentsRef.current = nextComments;
@@ -434,6 +449,8 @@ export function EditorProvider({
     setComments,
     saveNow,
     exportMarkdown,
+    setSerializer,
+    scheduleSave: queueSave,
   };
 
   return (

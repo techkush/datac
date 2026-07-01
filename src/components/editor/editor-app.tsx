@@ -5,9 +5,14 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { EditorProvider, useEditor } from "./store";
 import { AppSidebar } from "./app-sidebar";
 import { Topbar } from "./topbar";
+import dynamic from "next/dynamic";
 import { PageHead } from "./page-head";
-import { ReadonlyBlocks } from "./readonly-blocks";
 import { Button } from "@/components/ui/button";
+
+const EditorCore = dynamic(
+  () => import("./editor-core").then((m) => m.EditorCore),
+  { ssr: false },
+);
 import { FilePlus2 } from "lucide-react";
 import type { DocSummary } from "@/lib/datac/types";
 
@@ -33,7 +38,7 @@ function DocArea() {
     <div className="flex-1 overflow-y-auto">
       <PageHead />
       <div className="mx-auto w-full max-w-3xl px-6 sm:px-12">
-        <ReadonlyBlocks />
+        <EditorCore key={currentId} />
       </div>
     </div>
   );

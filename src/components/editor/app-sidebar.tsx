@@ -20,7 +20,6 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -152,10 +151,12 @@ export function AppSidebar() {
     return (
       <React.Fragment key={d.id}>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={d.id === currentId}
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => openDoc(d.id)}
-            className="group/item pr-1"
+            data-active={d.id === currentId}
+            className="group/item ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md pr-1 text-sm outline-none focus-visible:ring-2"
             style={{ paddingLeft: 8 + depth * 12 }}
           >
             <button
@@ -185,14 +186,13 @@ export function AppSidebar() {
             />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <span
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   onClick={(e) => e.stopPropagation()}
                   className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex size-5 shrink-0 items-center justify-center rounded opacity-0 group-hover/item:opacity-100 data-[state=open]:opacity-100"
                 >
                   <MoreHorizontal className="size-4" />
-                </span>
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="right">
                 {orphan && hasParent && (
@@ -223,7 +223,7 @@ export function AppSidebar() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </SidebarMenuButton>
+          </div>
         </SidebarMenuItem>
         {hasKids &&
           !isCollapsed &&
