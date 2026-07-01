@@ -303,6 +303,12 @@ function applySlash(i) {
     }), 0);
     return;
   }
+  if (item.action === 'math') {
+    // open on the next tick so this mousedown doesn't immediately close the panel
+    const targetBlock = block;
+    setTimeout(() => openMathPanel({ replaceBlock: targetBlock }), 0);
+    return;
+  }
   if (item.action === 'linkfile') {
     const targetBlock = block;
     setStatus('saving', 'Choose a file…');

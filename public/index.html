@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Notes</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>" />
 </head>
 <body>
@@ -168,7 +169,47 @@
     <button class="menu-item danger" data-act="delete">🗑️ Delete</button>
   </div>
 
+  <!-- Math side panel (paste source → auto-clean → LaTeX → preview → insert) -->
+  <aside id="math-panel" class="math-panel" hidden>
+    <div class="mp-head">
+      <span class="mp-title">∑ Math equation</span>
+      <button id="mp-close" class="icon-btn" title="Close" aria-label="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="mp-body">
+      <label class="mp-label" for="mp-source">Paste your source</label>
+      <textarea id="mp-source" class="mp-source" rows="4" spellcheck="false"
+        placeholder="Paste math copied from ChatGPT, a website or a PDF — it gets auto-cleaned into LaTeX below."></textarea>
+      <button id="mp-clean" class="mini-btn full">↧ Auto-clean to LaTeX</button>
+
+      <label class="mp-label" for="mp-latex">LaTeX <small>— edit to correct</small></label>
+      <div class="mp-tools">
+        <button type="button" data-ins="\frac{a}{b}">frac</button>
+        <button type="button" data-ins="\begin{bmatrix} a &amp; b \\ c &amp; d \end{bmatrix}">matrix</button>
+        <button type="button" data-ins="\hat{x}">hat</button>
+        <button type="button" data-ins="\dot{x}">dot</button>
+        <button type="button" data-ins="_{t}">x_t</button>
+        <button type="button" data-ins="^{T}">x^T</button>
+        <button type="button" data-ins="\theta">θ</button>
+        <button type="button" data-ins="\Delta">Δ</button>
+      </div>
+      <textarea id="mp-latex" class="mp-latex" rows="5" spellcheck="false"
+        placeholder="\hat{x}_{t} = F\,\hat{x}_{t-1}"></textarea>
+
+      <label class="mp-label">Preview</label>
+      <div id="mp-preview" class="mp-preview"></div>
+    </div>
+    <div class="mp-foot">
+      <button id="mp-cancel" class="mini-btn">Cancel</button>
+      <button id="mp-insert" class="mini-btn primary">Insert to page</button>
+    </div>
+  </aside>
+
   <input id="file-picker" type="file" hidden />
+
+  <!-- KaTeX (vendored locally under /vendor/katex — no CDN, works offline) -->
+  <script src="/vendor/katex/katex.min.js"></script>
 
   <!-- app modules (load order matters: shared global scope) -->
   <script src="/js/core.js"></script>
@@ -181,6 +222,7 @@
   <script src="/js/pagehead.js"></script>
   <script src="/js/comments.js"></script>
   <script src="/js/blockmenu.js"></script>
+  <script src="/js/math.js"></script>
   <script src="/js/main.js"></script>
 </body>
 </html>
