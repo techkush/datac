@@ -8,6 +8,8 @@ as JSON on your machine. No accounts, no cloud, no build step.
 One always-running local server (a small, dependency-free Node daemon) serves every
 workspace at `http://localhost:4321`.
 
+![datac screenshot](assets/screenshot.png)
+
 ---
 
 ## Requirements
@@ -170,3 +172,9 @@ Your notes stay in each project's `dataC/` folder until you delete them yourself
 - The native file picker, open-file/folder, and `.dc` double-click use macOS
   (`osascript` / `open`). On other platforms the editor works, but those specific
   actions are no-ops until platform equivalents are added.
+
+---
+
+## License
+
+[MIT](LICENSE) © techkush
