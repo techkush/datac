@@ -8,20 +8,59 @@ import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
 /* ---------- positioned floating container with outside-click close ------- */
+const GAP = 6; // gap between the caret/anchor and the menu
+const MARGIN = 8; // min distance the menu keeps from the viewport edges
+const MAX_H = 360;
+
 function Floating({
   rect,
   width = 300,
   onClose,
   children,
-  below = true,
 }: {
   rect: DOMRect;
   width?: number;
   onClose: () => void;
   children: React.ReactNode;
-  below?: boolean;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
+  // Position is measured after render so the menu can flip above / shrink to
+  // stay on-screen when the caret is near a viewport edge. Start hidden to
+  // avoid a flash at the pre-measurement spot.
+  const [pos, setPos] = React.useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+    ready: boolean;
+  }>({ top: rect.bottom + GAP, left: rect.left, maxHeight: MAX_H, ready: false });
+
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const h = el.offsetHeight;
+
+    const spaceBelow = vh - rect.bottom - GAP - MARGIN;
+    const spaceAbove = rect.top - GAP - MARGIN;
+
+    // Prefer below; flip above when it doesn't fit there but fits (better) above.
+    let top: number;
+    let maxHeight: number;
+    if (h <= spaceBelow || spaceBelow >= spaceAbove) {
+      top = rect.bottom + GAP;
+      maxHeight = Math.min(MAX_H, Math.max(0, spaceBelow));
+    } else {
+      maxHeight = Math.min(MAX_H, Math.max(0, spaceAbove));
+      top = rect.top - GAP - Math.min(h, maxHeight);
+    }
+    // Final clamp so the box is always fully within the viewport.
+    top = Math.max(MARGIN, Math.min(top, vh - MARGIN - Math.min(h, maxHeight)));
+    const left = Math.max(MARGIN, Math.min(rect.left, vw - width - MARGIN));
+
+    setPos({ top, left, maxHeight, ready: true });
+  }, [rect, width]);
+
   React.useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -29,13 +68,18 @@ function Floating({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [onClose]);
-  const top = below ? rect.bottom + 6 : rect.top - 6;
-  const left = Math.min(rect.left, window.innerWidth - width - 12);
+
   return (
     <div
       ref={ref}
       className="bg-popover text-popover-foreground animate-in fade-in-0 zoom-in-95 fixed z-50 overflow-hidden rounded-lg border shadow-md"
-      style={{ top, left, width, maxHeight: "min(360px, 60vh)" }}
+      style={{
+        top: pos.top,
+        left: pos.left,
+        width,
+        maxHeight: `min(${MAX_H}px, ${pos.maxHeight}px)`,
+        visibility: pos.ready ? "visible" : "hidden",
+      }}
     >
       {children}
     </div>
