@@ -146,7 +146,13 @@ export function EditorProvider({
         setDocs((ds) =>
           ds.map((d) =>
             d.id === id
-              ? { ...d, title: fields.title, icon: fields.icon }
+              ? {
+                  ...d,
+                  title: fields.title,
+                  icon: fields.icon,
+                  status: fields.status,
+                  parent: fields.parent,
+                }
               : d,
           ),
         );
@@ -414,12 +420,19 @@ export function EditorProvider({
     };
   }, [saveNow]);
 
-  // Open the first top-level page on mount.
+  // Open the first top-level page on mount — the same first page the sidebar
+  // shows (top-level, non-orphaned, ordered by created ascending), not the
+  // most recently edited one.
   const booted = React.useRef(false);
   React.useEffect(() => {
     if (booted.current) return;
     booted.current = true;
-    const first = initialDocs.find((d) => !d.parent) || initialDocs[0];
+    const roots = initialDocs
+      .filter((d) => !d.parent && !d.orphaned)
+      .sort((a, b) =>
+        String(a.created || "").localeCompare(String(b.created || "")),
+      );
+    const first = roots[0] || initialDocs[0];
     if (first) openDoc(first.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
