@@ -59,12 +59,24 @@ const MATH_SYM: Record<string, string> = {
   "′": "'", "″": "''", "−": "-", "∣": "|", "∥": "\\|",
 };
 
+// Known function names rendered as upright operators (with proper spacing).
+const MATH_OPS = [
+  "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "max", "min",
+  "sin", "cos", "tan", "sec", "csc", "cot", "log", "ln", "exp", "lim",
+  "det", "gcd", "sup", "inf", "arg", "deg", "dim", "ker",
+];
+
 function escRe(c: string): string {
   return c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function cleanMathSource(raw: string): string {
   let s = String(raw ?? "").normalize("NFC");
+  // Recover scripts encoded by zero-width markers in copied rendered math: a
+  // base letter followed by a letter/digit run terminated by U+200B is a
+  // script run. Copied text can't tell sub from super, so treat it as a
+  // subscript (the common case) — e.g. "Qdepth​" -> "Q_{depth}".
+  s = s.replace(/(\p{L})([\p{L}\p{N}]+)​/gu, (_, b, r) => `${b}_{${r}}`);
   s = s.replace(/[​‌‍⁠﻿]/g, "");
   s = s.replace(/[  -   　]/g, " ");
   s = s.replace(/(\S)̇/g, "\\dot{$1}");
@@ -83,6 +95,11 @@ export function cleanMathSource(raw: string): string {
     (m) => "_{" + Array.from(m).map((c) => MATH_SUB[c]).join("") + "}",
   );
   for (const k of Object.keys(MATH_SYM)) s = s.split(k).join(MATH_SYM[k] + " ");
+  // Function names -> operators (\max, \min, \sin, …); \\? avoids double-escaping.
+  s = s.replace(
+    new RegExp("\\\\?\\b(" + MATH_OPS.join("|") + ")\\b", "g"),
+    (_, n) => "\\" + n,
+  );
   s = s.replace(/[ \t]{2,}/g, " ").replace(/\s+$/g, "").replace(/^\s+/g, "");
   return s;
 }
