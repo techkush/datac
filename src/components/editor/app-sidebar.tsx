@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   FolderOpen,
+  Home,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -243,6 +244,21 @@ export function AppSidebar() {
             </span>
           </div>
           <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                >
+                  <a href="/" aria-label="Home">
+                    <Home className="size-4" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>All workspaces (home)</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
