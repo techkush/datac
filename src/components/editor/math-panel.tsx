@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { cleanMathSource, renderMathHtml } from "@/lib/datac/math";
+import { cleanMathSource, guessFraction, renderMathHtml } from "@/lib/datac/math";
 
 const SNIPPETS = [
   { label: "frac", ins: "\\frac{a}{b}" },
@@ -39,6 +39,9 @@ export function MathPanel({
   const [source, setSource] = React.useState("");
   const [latex, setLatex] = React.useState(initialTex);
   const latexRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Best-effort: only shown when a flattened fraction is confidently detected.
+  const fracGuess = React.useMemo(() => guessFraction(latex), [latex]);
 
   React.useEffect(() => {
     if (open) {
@@ -122,6 +125,15 @@ export function MathPanel({
               placeholder={"\\hat{x}_{t} = F\\,\\hat{x}_{t-1}"}
               className="bg-muted resize-none rounded-md p-2 font-mono text-sm outline-none"
             />
+            {fracGuess && fracGuess !== latex && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setLatex(fracGuess)}
+              >
+                ⁄ Looks like a fraction — convert
+              </Button>
+            )}
           </div>
 
           <div className="grid gap-1.5">

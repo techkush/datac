@@ -103,3 +103,68 @@ export function cleanMathSource(raw: string): string {
   s = s.replace(/[ \t]{2,}/g, " ").replace(/\s+$/g, "").replace(/^\s+/g, "");
   return s;
 }
+
+/* ---- fraction heuristic (best-effort; opt-in) --------------------------
+ * Copied rendered fractions arrive flattened: \frac{A}{B} becomes "AB" with no
+ * separator. The tell is an operand immediately followed by another operand
+ * (a juxtaposition that never occurs in well-formed math), where both the
+ * expression ending at the seam and the one starting after it are additive
+ * (contain + or -). We wrap that region as \frac{first}{second}. Returns null
+ * when no confident seam is found — a clean paste is never touched. */
+type MTok = { t: "op" | "add" | "delim" | "oth"; v: string; i: number; end: number };
+
+const OPERAND_RE =
+  /^(?:\\[A-Za-z]+|[A-Za-z0-9])(?:\s*_(?:\{[^{}]*\}|[A-Za-z0-9]))?(?:\s*\^(?:\{[^{}]*\}|[A-Za-z0-9]))?/;
+
+function tokenizeMath(s: string): MTok[] {
+  const toks: MTok[] = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === "+" || c === "-") { toks.push({ t: "add", v: c, i, end: i + 1 }); i++; continue; }
+    if ("(),{}[]|".includes(c)) { toks.push({ t: "delim", v: c, i, end: i + 1 }); i++; continue; }
+    if ("*/=<>".includes(c)) { toks.push({ t: "oth", v: c, i, end: i + 1 }); i++; continue; }
+    const m = OPERAND_RE.exec(s.slice(i));
+    if (m && m[0]) { toks.push({ t: "op", v: m[0], i, end: i + m[0].length }); i += m[0].length; continue; }
+    toks.push({ t: "oth", v: c, i, end: i + 1 }); i++;
+  }
+  return toks;
+}
+
+export function guessFraction(tex: string): string | null {
+  const s = String(tex ?? "");
+  const toks = tokenizeMath(s);
+  // A "complex" operand carries a script or is a \command — the seam of a real
+  // flattened fraction (e.g. θ_{ideal}θ_{down}) has these, whereas implicit
+  // multiplication of bare letters (bx, mc) does not.
+  const isComplex = (v: string) => /[_^]/.test(v) || /^\\[A-Za-z]/.test(v);
+  for (let k = 0; k + 1 < toks.length; k++) {
+    if (toks[k].t !== "op" || toks[k + 1].t !== "op") continue;
+    if (!isComplex(toks[k].v) && !isComplex(toks[k + 1].v)) continue;
+    // Expand left over an additive run (operands + and -) up to a boundary.
+    let a = k;
+    let leftAdd = false;
+    while (a - 1 >= 0 && (toks[a - 1].t === "op" || toks[a - 1].t === "add")) {
+      a--;
+      if (toks[a].t === "add") leftAdd = true;
+    }
+    // Expand right similarly.
+    let b = k + 1;
+    let rightAdd = false;
+    while (b + 1 < toks.length && (toks[b + 1].t === "op" || toks[b + 1].t === "add")) {
+      b++;
+      if (toks[b].t === "add") rightAdd = true;
+    }
+    if (!leftAdd || !rightAdd) continue; // both halves must be additive
+    const num = s.slice(toks[a].i, toks[k].end).trim();
+    const den = s.slice(toks[k + 1].i, toks[b].end).trim();
+    if (!num || !den) continue;
+    return (
+      s.slice(0, toks[a].i) +
+      `\\frac{${num}}{${den}}` +
+      s.slice(toks[b].end)
+    );
+  }
+  return null;
+}
