@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { readRegistry, workspaceDir } from "@/lib/datac/registry";
+import { readRegistry, touchOpened, workspaceDir } from "@/lib/datac/registry";
 import { listDocs } from "@/lib/datac/docs";
 import { EditorApp } from "@/components/editor/editor-app";
+import { FocusTracker } from "@/components/workspaces/focus-tracker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,15 +29,19 @@ export default async function WorkspacePage({
       </main>
     );
   }
+  await touchOpened(id);
   const reg = await readRegistry();
   const w = reg[id] || {};
   const docs = await listDocs(dir);
 
   return (
-    <EditorApp
-      ws={id}
-      info={{ title: w.title || "Untitled", projectDir: w.projectDir }}
-      docs={docs}
-    />
+    <>
+      <FocusTracker ws={id} />
+      <EditorApp
+        ws={id}
+        info={{ title: w.title || "Untitled", projectDir: w.projectDir }}
+        docs={docs}
+      />
+    </>
   );
 }

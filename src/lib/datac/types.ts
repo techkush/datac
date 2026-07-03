@@ -85,7 +85,23 @@ export interface Workspace {
   projectDir?: string;
   dataDir?: string;
   opened?: string;
+  // ISO timestamp when the workspace was moved to the home-page trash.
+  // Absent/empty = active. Trashed entries stay in the registry so nothing
+  // on disk is ever touched; "delete forever" only drops the entry.
+  trashed?: string;
   [key: string]: unknown;
 }
 
 export type Registry = Record<string, Workspace>;
+
+// A saved link on the home page (stored in ~/.datac/quicklinks.json).
+export interface QuickLink {
+  id: string;
+  title: string;
+  url: string;
+  created: string;
+}
+
+// Per-workspace focus time, bucketed by local day (stored in ~/.datac/focus.json).
+// { [workspaceId]: { "2026-07-03": seconds, ... } }
+export type FocusLog = Record<string, Record<string, number>>;

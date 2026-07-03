@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 import { DATAC_HOME, REGISTRY } from "./paths";
 import type { Registry } from "./types";
 
@@ -25,29 +24,41 @@ export async function workspaceDir(id: string): Promise<string | null> {
   return ws.dataDir;
 }
 
-// Remove a workspace: delete its dataC data + open.dc + registry entry.
-// Only remove the project folder itself if it is left completely empty.
-export async function deleteWorkspace(id: string): Promise<boolean> {
+// Soft-delete: flag the entry as trashed. Nothing on disk changes.
+export async function trashWorkspace(id: string): Promise<boolean> {
   const reg = await readRegistry();
-  const w = reg[id];
-  if (!w) return false;
-  if (w.dataDir) {
-    try {
-      await fsp.rm(w.dataDir, { recursive: true, force: true });
-    } catch {}
-  }
-  if (w.projectDir) {
-    try {
-      await fsp.unlink(path.join(w.projectDir, "open.dc"));
-    } catch {}
-    try {
-      const rest = await fsp.readdir(w.projectDir);
-      if (!rest.length) await fsp.rmdir(w.projectDir);
-    } catch {}
-  }
+  if (!reg[id]) return false;
+  reg[id].trashed = new Date().toISOString();
+  await writeRegistry(reg);
+  return true;
+}
+
+// Bring a trashed workspace back to the active list.
+export async function restoreWorkspace(id: string): Promise<boolean> {
+  const reg = await readRegistry();
+  if (!reg[id]) return false;
+  delete reg[id].trashed;
+  await writeRegistry(reg);
+  return true;
+}
+
+// "Delete forever": drop the registry entry only. The project folder, its
+// dataC notes and open.dc are left untouched — reopening open.dc (or running
+// `datac open` there) re-registers the workspace.
+export async function removeWorkspaceEntry(id: string): Promise<boolean> {
+  const reg = await readRegistry();
+  if (!reg[id]) return false;
   delete reg[id];
+  await writeRegistry(reg);
+  return true;
+}
+
+// Stamp the last-opened time (called when the workspace page is visited).
+export async function touchOpened(id: string): Promise<void> {
+  const reg = await readRegistry();
+  if (!reg[id]) return;
+  reg[id].opened = new Date().toISOString();
   try {
     await writeRegistry(reg);
   } catch {}
-  return true;
 }
