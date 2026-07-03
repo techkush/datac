@@ -1,6 +1,11 @@
 import fs from "fs";
 import path from "path";
 import type { Block, DocSummary } from "./types";
+import {
+  isBlockNoteDoc,
+  collectBnPageIds,
+  type BnBlock,
+} from "./blocknote-convert";
 
 const fsp = fs.promises;
 
@@ -42,6 +47,10 @@ export function safeParse<T>(s: string | undefined, fallback: T): T {
 
 // Ordered list of child page ids as they appear in a doc's block flow.
 export function collectPageIds(blocks: Block[] | undefined, out: string[]) {
+  if (isBlockNoteDoc(blocks)) {
+    collectBnPageIds(blocks as unknown as BnBlock[], out);
+    return;
+  }
   for (const b of blocks || []) {
     if (b.type === "page" && b.pageId) out.push(b.pageId);
     else if (b.type === "columns" && Array.isArray(b.cols))
@@ -168,8 +177,21 @@ export async function saveDoc(
   const jf = path.join(dataDir, id + ".json");
   let created = doc.created || new Date().toISOString();
   try {
-    const e = JSON.parse(await fsp.readFile(jf, "utf8"));
+    const raw = await fsp.readFile(jf, "utf8");
+    const e = JSON.parse(raw);
     if (e.created) created = e.created;
+    // First save in BlockNote format over a legacy-format doc: keep a
+    // one-time .json.bak so the original notes are never lost.
+    if (
+      Array.isArray(e.blocks) &&
+      e.blocks.length &&
+      !isBlockNoteDoc(e.blocks) &&
+      isBlockNoteDoc(doc.blocks)
+    ) {
+      try {
+        await fsp.writeFile(jf + ".bak", raw, { flag: "wx" });
+      } catch {}
+    }
   } catch {
     try {
       const { meta } = parseDoc(
@@ -194,9 +216,12 @@ export async function saveDoc(
   };
   await fsp.mkdir(dataDir, { recursive: true });
   await fsp.writeFile(jf, JSON.stringify(out, null, 2), "utf8");
-  // migrated from legacy markdown — drop the stale .md so it isn't left behind
+  // migrated from legacy markdown — keep it as .bak so it isn't a live doc
   try {
-    await fsp.unlink(path.join(dataDir, id + ".md"));
+    await fsp.rename(
+      path.join(dataDir, id + ".md"),
+      path.join(dataDir, id + ".md.bak"),
+    );
   } catch {}
   return { id, title: out.title, icon: out.icon, updated, created };
 }

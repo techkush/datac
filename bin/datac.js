@@ -227,31 +227,31 @@ async function cmdInit(args) {
  * created next to dataC. */
 const SETUP_TEMPLATES = {
   research: {
-    title: 'Research', icon: '🎓',
+    title: 'Research', icon: 'GraduationCap',
     folders: ['search', 'read_list', 'code_base', 'writing'],
     phases: [
-      { title: 'Searching', icon: '🔍', steps: [
+      { title: 'Searching', icon: 'Search', steps: [
         'Abstract the topic — distil the research question into a focused query.',
         'Get search results via Perplexity.',
         'Deep research via Gemini.',
         'Create a PDF of the compiled findings.',
         'Send to iPad for offline review.',
       ], subpages: ['Abstract', 'Perplexity Report', 'Deep Research Report'] },
-      { title: 'Reading & Listening', icon: '🎧', steps: [
+      { title: 'Reading & Listening', icon: 'Headphones', steps: [
         'Create a Notebook in NotebookLM — Audio (Sinhala & English), Flashcards, Mindmap, Infographics, Brief Document.',
         'Listen to audio reviews while working.',
         'Read full deep-research documents.',
         'Highlight key points & papers needing deeper reading.',
         'Download & read papers — collect the semantic idea and how they did the POC.',
       ], subpages: [] },
-      { title: 'Coding & Testing', icon: '⚙️', steps: [
+      { title: 'Coding & Testing', icon: 'Settings', steps: [
         'Plan the experimental idea.',
         'Prompting — design and refine prompts.',
         'Coding — implement the experiment.',
         'Testing — validate the implementation.',
         'Generate proper results.',
       ], subpages: ['Planning', 'Prompts', 'Testing Results', 'Final Results'] },
-      { title: 'Writing', icon: '✍️', steps: [
+      { title: 'Writing', icon: 'PenLine', steps: [
         'Methodology & Results — write briefly, read & brief the document, then revise.',
         'Introduction & Related Works — write briefly, read & brief the document, then revise.',
         'Conclusion & Abstract — write, then read & revise the full document.',
@@ -260,23 +260,23 @@ const SETUP_TEMPLATES = {
     ],
   },
   mobileapp: {
-    title: 'Mobile App', icon: '📱',
+    title: 'Mobile App', icon: 'Smartphone',
     folders: ['planning', 'prompts', 'code', 'deploy'],
     phases: [
-      { title: 'Planning', icon: '🧭', steps: [
+      { title: 'Planning', icon: 'Compass', steps: [
         'Open the document to start capturing the plan.',
         'Write down the ideas for the app.',
         'List key features & functions.',
         'Select the frameworks to build with.',
       ], subpages: ['Main Idea', 'Key Features', 'Technology and Diagrams'] },
-      { title: 'Prompting', icon: '💬', steps: [
+      { title: 'Prompting', icon: 'MessageCircle', steps: [
         'List the essential prompts for Claude in the document.',
       ], subpages: [] },
-      { title: 'Coding & Testing', icon: '⚙️', steps: [
+      { title: 'Coding & Testing', icon: 'Settings', steps: [
         'Code one prompt at a time.',
         'Test with a real device.',
       ], subpages: [] },
-      { title: 'Deploying', icon: '🚀', steps: [
+      { title: 'Deploying', icon: 'Rocket', steps: [
         'Check for security issues before release.',
         'Deploy to the App Store — test version.',
         'Deploy to the Play Store — test version.',
@@ -302,7 +302,7 @@ function buildTemplateDocs(tpl) {
     (ph.subpages || []).forEach((sub, si) => {
       const subId = crypto.randomBytes(8).toString('hex');
       docs.push({ id: subId, doc: {
-        title: sub, icon: '📄', cover: '', parent: parentId, orphaned: false, status: 'not-started',
+        title: sub, icon: 'FileText', cover: '', parent: parentId, orphaned: false, status: 'not-started',
         created: iso(base + pi * 2000 + (si + 1) * 20), updated: parentCreated,
         blocks: [{ id: bid(), type: 'paragraph', html: '' }], comments: {},
       } });
@@ -316,7 +316,7 @@ function buildTemplateDocs(tpl) {
       blocks.push(...links);
     }
     docs.push({ id: parentId, doc: {
-      title: ph.title, icon: ph.icon || '📄', cover: '', parent: '', orphaned: false, status: 'not-started',
+      title: ph.title, icon: ph.icon || 'FileText', cover: '', parent: '', orphaned: false, status: 'not-started',
       created: parentCreated, updated: parentCreated, blocks, comments: {},
     } });
   });

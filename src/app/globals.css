@@ -219,3 +219,23 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+/* ---- BlockNote editor: blend into the app theme ------------------------- */
+.datac-blocknote .bn-editor {
+  background: transparent;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* No inner padding: the wrapper matches PageHead's padding so headings
+     and blocks align; the drag handle floats in the wrapper's gutter. */
+  padding-inline: 0;
+}
+.datac-blocknote {
+  background: transparent;
+}
+.datac-math .katex-display {
+  margin: 0.25rem 0;
+}
+
+/* Slightly smaller + / drag-handle gutter buttons (default is 22px icons) */
+.datac-blocknote .bn-side-menu .mantine-UnstyledButton-root:not(.mantine-Menu-item) svg {
+  height: 17px;
+  width: 17px;
+}
