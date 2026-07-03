@@ -24,6 +24,23 @@ export async function workspaceDir(id: string): Promise<string | null> {
   return ws.dataDir;
 }
 
+// Update home-page display settings: title and/or accent border color.
+// An empty color clears the accent back to the default border.
+export async function updateWorkspaceMeta(
+  id: string,
+  patch: { title?: string; color?: string },
+): Promise<boolean> {
+  const reg = await readRegistry();
+  if (!reg[id]) return false;
+  if (patch.title !== undefined) reg[id].title = patch.title;
+  if (patch.color !== undefined) {
+    if (patch.color) reg[id].color = patch.color;
+    else delete reg[id].color;
+  }
+  await writeRegistry(reg);
+  return true;
+}
+
 // Soft-delete: flag the entry as trashed. Nothing on disk changes.
 export async function trashWorkspace(id: string): Promise<boolean> {
   const reg = await readRegistry();

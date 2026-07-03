@@ -3,9 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  BarChart3,
   FolderOpen,
   RotateCcw,
+  Settings,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
@@ -46,6 +46,8 @@ export interface WorkspaceRow {
   opened: string;
   focusSeconds: number;
   trashed: boolean;
+  // Accent border color ("" = default border).
+  color: string;
 }
 
 function IconAction({
@@ -142,13 +144,19 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
           <ul className="flex flex-col gap-2">
             {active.map((w) => (
               <li key={w.id}>
-                <Card className="group flex-row items-center gap-2 p-3.5 transition-colors">
+                <Card className="group flex-row items-center gap-2 px-3 py-2.5 transition-colors">
                   <Link
                     href={`/w/${w.id}`}
                     className="flex min-w-0 flex-1 flex-col gap-0.5"
                   >
-                    <span className="truncate text-base font-semibold">
-                      {w.title}
+                    <span className="flex items-center gap-2 text-base font-semibold">
+                      {w.color && (
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: w.color }}
+                        />
+                      )}
+                      <span className="truncate">{w.title}</span>
                     </span>
                     <span className="text-muted-foreground truncate text-xs">
                       {formatOpened(w.opened)} ·{" "}
@@ -162,10 +170,10 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
                     <FolderOpen className="size-4" />
                   </IconAction>
                   <IconAction
-                    label="Statistics"
+                    label="Settings & statistics"
                     onClick={() => setStatsTarget(w)}
                   >
-                    <BarChart3 className="size-4" />
+                    <Settings className="size-4" />
                   </IconAction>
                   <IconAction
                     label="Move to trash"
@@ -189,7 +197,7 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
           <ul className="flex flex-col gap-2">
             {trash.map((w) => (
               <li key={w.id}>
-                <Card className="flex-row items-center gap-2 p-3.5 opacity-75">
+                <Card className="flex-row items-center gap-2 px-3 py-2.5 opacity-75">
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-base font-semibold">
                       {w.title}
@@ -258,6 +266,10 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
       <StatsPanel
         target={statsTarget}
         onClose={() => setStatsTarget(null)}
+        onUpdate={(id, patch) => {
+          setRows((rs) => rs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+          setStatsTarget((t) => (t && t.id === id ? { ...t, ...patch } : t));
+        }}
       />
     </>
   );

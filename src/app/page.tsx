@@ -33,6 +33,7 @@ export default async function Home() {
       opened: w.opened || "",
       focusSeconds: totals[id] || 0,
       trashed: !!w.trashed,
+      color: w.color || "",
     }));
 
   return (
