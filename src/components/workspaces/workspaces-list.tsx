@@ -22,6 +22,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -74,6 +84,9 @@ function IconAction({
 export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
   const [rows, setRows] = React.useState(initial);
   const [statsTarget, setStatsTarget] = React.useState<WorkspaceRow | null>(
+    null,
+  );
+  const [trashTarget, setTrashTarget] = React.useState<WorkspaceRow | null>(
     null,
   );
   const [foreverTarget, setForeverTarget] =
@@ -157,7 +170,7 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
                   <IconAction
                     label="Move to trash"
                     destructive
-                    onClick={() => setTrashed(w, true)}
+                    onClick={() => setTrashTarget(w)}
                   >
                     <Trash2 className="size-4" />
                   </IconAction>
@@ -205,6 +218,35 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
           </ul>
         </section>
       )}
+
+      <AlertDialog
+        open={!!trashTarget}
+        onOpenChange={(o) => !o && setTrashTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Move “{trashTarget?.title}” to trash?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              It goes to the Trash section below the workspace list — nothing
+              on disk changes, and you can restore it anytime.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (trashTarget) setTrashed(trashTarget, true);
+                setTrashTarget(null);
+              }}
+            >
+              Move to trash
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DeleteForeverDialog
         key={foreverTarget?.id ?? "closed"}
