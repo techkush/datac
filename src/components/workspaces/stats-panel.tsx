@@ -10,6 +10,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -19,6 +27,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDuration } from "@/lib/datac/format";
+import { WORKSPACE_COLORS } from "@/lib/datac/colors";
 import type { WorkspaceRow } from "@/components/workspaces/workspaces-list";
 
 // Emerald data color — validated against both light (#fcfcfb) and dark
@@ -160,12 +169,97 @@ function FocusChart({ series }: { series: DayPoint[] }) {
   );
 }
 
+// Sentinel for the "no accent" choice — Radix Select forbids empty item values.
+const NO_COLOR = "none";
+
+// Title + accent-border color for the home-page card. Keyed by workspace id
+// in StatsPanel so local state resets when the panel targets another card.
+function WorkspaceSettings({
+  target,
+  onUpdate,
+}: {
+  target: WorkspaceRow;
+  onUpdate: (id: string, patch: { title?: string; color?: string }) => void;
+}) {
+  const [title, setTitle] = React.useState(target.title);
+  const [busy, setBusy] = React.useState(false);
+
+  async function save(patch: { title?: string; color?: string }) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/workspaces/${target.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", ...patch }),
+      });
+      if (!r.ok) throw new Error();
+      onUpdate(target.id, patch);
+      toast.success("Workspace updated");
+    } catch {
+      toast.error("Could not save workspace settings");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function saveTitle() {
+    const t = title.trim();
+    if (!t || t === target.title) return;
+    save({ title: t });
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        Workspace settings
+      </span>
+      <Input
+        value={title}
+        disabled={busy}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={saveTitle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") saveTitle();
+        }}
+        placeholder="Workspace title"
+        aria-label="Workspace title"
+      />
+      <Select
+        value={target.color || NO_COLOR}
+        disabled={busy}
+        onValueChange={(v) => save({ color: v === NO_COLOR ? "" : v })}
+      >
+        <SelectTrigger className="w-full" aria-label="Accent color">
+          <SelectValue placeholder="Accent color" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_COLOR}>
+            <span className="border-border size-3 shrink-0 rounded-full border" />
+            No color
+          </SelectItem>
+          {WORKSPACE_COLORS.map((c) => (
+            <SelectItem key={c.value} value={c.value}>
+              <span
+                className="size-3 shrink-0 rounded-full"
+                style={{ backgroundColor: c.value }}
+              />
+              {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function StatsPanel({
   target,
   onClose,
+  onUpdate,
 }: {
   target: WorkspaceRow | null;
   onClose: () => void;
+  onUpdate: (id: string, patch: { title?: string; color?: string }) => void;
 }) {
   const [range, setRange] = React.useState<number>(7);
   // Tag the fetched buckets with their workspace id so a stale result
@@ -277,6 +371,16 @@ export function StatsPanel({
             <div className="bg-muted/50 h-44 animate-pulse rounded-lg" />
           ) : (
             <FocusChart series={series} />
+          )}
+
+          <div className="border-t" />
+
+          {target && (
+            <WorkspaceSettings
+              key={target.id}
+              target={target}
+              onUpdate={onUpdate}
+            />
           )}
 
           <div className="border-t" />

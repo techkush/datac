@@ -85,6 +85,9 @@ export interface Workspace {
   projectDir?: string;
   dataDir?: string;
   opened?: string;
+  // Accent color shown as a dot on the home-page card title
+  // (one of WORKSPACE_COLORS). Absent/empty = no accent.
+  color?: string;
   // ISO timestamp when the workspace was moved to the home-page trash.
   // Absent/empty = active. Trashed entries stay in the registry so nothing
   // on disk is ever touched; "delete forever" only drops the entry.
