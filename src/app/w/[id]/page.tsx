@@ -7,6 +7,18 @@ import { FocusTracker } from "@/components/workspaces/focus-tracker";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Tab title: "DataC | {project name}"
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const reg = await readRegistry();
+  const title = reg[id]?.title;
+  return { title: title ? `DataC | ${title}` : "DataC Workspace" };
+}
+
 export default async function WorkspacePage({
   params,
 }: {

@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
 import { execFile } from "child_process";
+import { readOpenApps } from "@/lib/datac/openapps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// Whitelisted desktop apps the home page can launch, with web fallbacks
-// the client opens when the native app is missing.
-const APPS: Record<string, { mac: string; web: string }> = {
-  todo: { mac: "Microsoft To Do", web: "https://to-do.office.com" },
-  outlook: { mac: "Microsoft Outlook", web: "https://outlook.office.com/mail" },
-};
 
 function openMacApp(name: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -17,14 +11,19 @@ function openMacApp(name: string): Promise<boolean> {
   });
 }
 
+// Launch a saved app by its id. The application name is looked up in the
+// user's own launcher list (~/.datac/openapps.json), never taken from the
+// request, so only apps the user configured can be opened.
 export async function POST(req: Request) {
-  let key = "";
+  let id = "";
   try {
-    key = ((await req.json()) as { app?: string }).app || "";
+    id = ((await req.json()) as { id?: string }).id || "";
   } catch {}
-  const app = APPS[key];
-  if (!app)
-    return NextResponse.json({ error: "unknown app" }, { status: 400 });
-  const ok = process.platform === "darwin" ? await openMacApp(app.mac) : false;
-  return NextResponse.json({ ok, web: app.web });
+  const entry = (await readOpenApps()).find((a) => a.id === id);
+  if (!entry)
+    return NextResponse.json({ error: "unknown app" }, { status: 404 });
+  if (process.platform !== "darwin")
+    return NextResponse.json({ ok: false, error: "macOS only" }, { status: 501 });
+  const ok = await openMacApp(entry.app);
+  return NextResponse.json({ ok });
 }

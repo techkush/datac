@@ -118,13 +118,13 @@ export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
         </h2>
 
         {!active.length ? (
-          <Card className="text-muted-foreground border-dashed p-8 text-center text-sm">
-            No workspaces yet. Run{" "}
-            <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+          <p className="text-muted-foreground text-xs">
+            No workspaces yet — run{" "}
+            <code className="bg-muted rounded px-1 py-0.5 font-mono">
               datac init
             </code>{" "}
             in a project folder.
-          </Card>
+          </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {active.map((w) => (

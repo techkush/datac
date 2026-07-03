@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DATAC_HOME } from "./paths";
+import { writeJsonAtomic } from "./store";
 import type { FocusLog } from "./types";
 
 const fsp = fs.promises;
@@ -27,8 +28,7 @@ export async function readFocusLog(): Promise<FocusLog> {
 }
 
 async function writeFocusLog(log: FocusLog): Promise<void> {
-  await fsp.mkdir(DATAC_HOME, { recursive: true });
-  await fsp.writeFile(FOCUS, JSON.stringify(log, null, 2));
+  await writeJsonAtomic(FOCUS, log);
 }
 
 // Add focused seconds to today's bucket for one workspace.
