@@ -471,6 +471,12 @@ export function EditorProvider({
   React.useEffect(() => {
     if (booted.current) return;
     booted.current = true;
+    // Deep link: ?doc=<id> opens that page directly.
+    const wanted = new URLSearchParams(window.location.search).get("doc");
+    if (wanted && initialDocs.some((d) => d.id === wanted)) {
+      openDoc(wanted);
+      return;
+    }
     const roots = initialDocs
       .filter((d) => !d.parent && !d.orphaned)
       .sort((a, b) =>

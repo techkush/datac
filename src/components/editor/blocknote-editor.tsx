@@ -19,13 +19,8 @@ import {
   SideMenuController,
   SideMenu,
   DragHandleMenu,
-  RemoveBlockItem,
-  BlockColorsItem,
-  useComponentsContext,
-  useExtensionState,
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
-import { SideMenuExtension } from "@blocknote/core/extensions";
 import { BlockNoteView } from "@blocknote/mantine";
 import { offset, flip, shift, size } from "@floating-ui/react";
 import { codeBlockOptions } from "@blocknote/code-block";
@@ -55,6 +50,11 @@ import {
   EditorBridgeContext,
 } from "./blocknote-blocks";
 import { LatexDialog } from "./latex-dialog";
+import { BlockOptionsMenu } from "./block-options-menu";
+import {
+  isBlockNoteDoc,
+  legacyToBlockNote,
+} from "@/lib/datac/blocknote-convert";
 import { CommentsPanel } from "./comments-panel";
 import { readAsDataURL } from "@/lib/datac/upload";
 import { PageIcon } from "@/components/page-icon";
@@ -134,6 +134,9 @@ export function BlockNoteEditor() {
     null,
   );
   const [pagePickerOpen, setPagePickerOpen] = React.useState(false);
+  const [moveTargetId, setMoveTargetId] = React.useState<string | null>(null);
+  // Suppresses orphan tracking while a block is moved between pages.
+  const movingRef = React.useRef(false);
   // Overlay geometry: recomputed (debounced) after content edits.
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const [layoutTick, setLayoutTick] = React.useState(0);
@@ -168,6 +171,28 @@ export function BlockNoteEditor() {
     [],
   );
 
+  // Deep link: /w/<ws>?doc=<docId>&block=<blockId> scrolls to and
+  // flashes the linked block once the editor is mounted.
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const blockId = params.get("block");
+    const docId = params.get("doc");
+    if (!blockId || (docId && docId !== store.currentId)) return;
+    const t = setTimeout(() => {
+      const el = document.querySelector(
+        `.bn-block-outer[data-id="${CSS.escape(blockId)}"]`,
+      );
+      if (el) {
+        el.scrollIntoView({ block: "center" });
+        el.classList.add("dc-block-flash");
+        setTimeout(() => el.classList.remove("dc-block-flash"), 2200);
+      }
+      history.replaceState(null, "", location.pathname);
+    }, 150);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The store pulls the live document at save time.
   React.useEffect(() => {
     store.setSerializer(() => editor.document as unknown as Block[]);
@@ -186,6 +211,10 @@ export function BlockNoteEditor() {
     const current = ownedPageIds(editor.document as unknown[]);
     const previous = pageIdsRef.current;
     pageIdsRef.current = current;
+    if (movingRef.current) {
+      store.scheduleSave();
+      return;
+    }
     for (const id of previous)
       if (!current.has(id)) store.orphanPage(id);
     for (const id of current)
@@ -302,6 +331,60 @@ export function BlockNoteEditor() {
     [],
   );
 
+  const moveBlockToPage = React.useCallback(
+    async (target: DocSummary) => {
+      const blockId = moveTargetId;
+      setMoveTargetId(null);
+      if (!blockId) return;
+      const b = editor.getBlock(blockId);
+      if (!b) return;
+      movingRef.current = true;
+      try {
+        const doc = await store.client.get(target.id);
+        if (!doc || doc.error) throw new Error();
+        let blocks = Array.isArray(doc.blocks) ? doc.blocks.slice() : [];
+        if (blocks.length && !isBlockNoteDoc(blocks))
+          blocks = legacyToBlockNote(blocks) as never[];
+        blocks.push(b as never);
+        await store.client.save(target.id, {
+          title: doc.title,
+          icon: doc.icon,
+          cover: doc.cover,
+          parent: doc.parent || "",
+          status: doc.status || "",
+          orphaned: !!doc.orphaned,
+          blocks,
+          comments: doc.comments,
+        });
+        // Owned sub-pages inside the moved block now belong to the target.
+        for (const pid of ownedPageIds([b as never])) {
+          const child = await store.client.get(pid);
+          if (child && !child.error)
+            await store.client.save(pid, {
+              title: child.title,
+              icon: child.icon,
+              cover: child.cover,
+              parent: target.id,
+              status: child.status || "",
+              orphaned: false,
+              blocks: child.blocks || [],
+              comments: child.comments,
+            });
+        }
+        editor.removeBlocks([blockId]);
+        await store.refreshDocs();
+        toast.success(`Moved to “${target.title || "Untitled"}”`);
+      } catch {
+        toast.error("Move failed");
+      } finally {
+        pageIdsRef.current = ownedPageIds(editor.document as unknown[]);
+        movingRef.current = false;
+        store.scheduleSave();
+      }
+    },
+    [editor, moveTargetId, store],
+  );
+
   const insertPageLink = React.useCallback(
     (doc: DocSummary) => {
       editor.insertBlocks(
@@ -361,9 +444,13 @@ export function BlockNoteEditor() {
             <SideMenu
               dragHandleMenu={() => (
                 <DragHandleMenu>
-                  <RemoveBlockItem>Delete</RemoveBlockItem>
-                  <BlockColorsItem>Colors</BlockColorsItem>
-                  <CommentMenuItem onOpen={(bid) => setCommentsTarget(bid)} />
+                  <BlockOptionsMenu
+                    onOpenComments={(bid) => setCommentsTarget(bid)}
+                    onEditMath={(blockId, tex) =>
+                      setMathTarget({ blockId, tex })
+                    }
+                    onMoveTo={(bid) => setMoveTargetId(bid)}
+                  />
                 </DragHandleMenu>
               )}
             />
@@ -394,6 +481,13 @@ export function BlockNoteEditor() {
         open={pagePickerOpen}
         onClose={() => setPagePickerOpen(false)}
         onPick={insertPageLink}
+      />
+      <PagePickerDialog
+        key={moveTargetId ? `move-${moveTargetId}` : "move-closed"}
+        title="Move block to page"
+        open={!!moveTargetId}
+        onClose={() => setMoveTargetId(null)}
+        onPick={moveBlockToPage}
       />
     </EditorBridgeContext.Provider>
   );
@@ -471,35 +565,16 @@ function CommentOverlay({
   );
 }
 
-/* ---- side-menu comment item ------------------------------------------------ */
-
-function CommentMenuItem({ onOpen }: { onOpen: (bid: string) => void }) {
-  const Components = useComponentsContext()!;
-  const { comments } = useEditor();
-  const block = useExtensionState(SideMenuExtension, {
-    selector: (state) => state?.block,
-  });
-  if (!block) return null;
-  const count = comments[block.id]?.length || 0;
-  return (
-    <Components.Generic.Menu.Item
-      className="bn-menu-item"
-      icon={<MessageSquareText className="size-3.5" />}
-      onClick={() => onOpen(block.id)}
-    >
-      {count ? `Comments (${count})` : "Add comment"}
-    </Components.Generic.Menu.Item>
-  );
-}
-
 /* ---- page picker for "Link to page" ---------------------------------------- */
 
 function PagePickerDialog({
   open,
+  title = "Link to page",
   onClose,
   onPick,
 }: {
   open: boolean;
+  title?: string;
   onClose: () => void;
   onPick: (doc: DocSummary) => void;
 }) {
@@ -516,7 +591,7 @@ function PagePickerDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Link to page</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <Input
           value={query}

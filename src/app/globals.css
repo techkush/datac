@@ -239,3 +239,19 @@
   height: 17px;
   width: 17px;
 }
+
+/* Flash highlight when a block is opened via a copied block link */
+.dc-block-flash {
+  animation: dc-flash 2.2s ease-out;
+  border-radius: 4px;
+}
+@keyframes dc-flash {
+  0%, 40% { background-color: color-mix(in srgb, #059669 18%, transparent); }
+  100% { background-color: transparent; }
+}
+
+/* Selected block outline: thinner and grey instead of BlockNote's 4px blue */
+.datac-blocknote .bn-block-content.ProseMirror-selectednode > *,
+.datac-blocknote .ProseMirror-selectednode > .bn-block-content > * {
+  outline: 2px solid color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+}
