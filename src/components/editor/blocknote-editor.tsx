@@ -27,6 +27,7 @@ import {
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { BlockNoteView } from "@blocknote/mantine";
+import { offset, flip, shift, size } from "@floating-ui/react";
 import { codeBlockOptions } from "@blocknote/code-block";
 import {
   withMultiColumn,
@@ -53,7 +54,7 @@ import {
   LinkFileBlock,
   EditorBridgeContext,
 } from "./blocknote-blocks";
-import { MathPanel } from "./math-panel";
+import { LatexDialog } from "./latex-dialog";
 import { CommentsPanel } from "./comments-panel";
 import { readAsDataURL } from "@/lib/datac/upload";
 import { PageIcon } from "@/components/page-icon";
@@ -251,9 +252,9 @@ export function BlockNoteEditor() {
           onItemClick: () => setPagePickerOpen(true),
         },
         {
-          title: "Math formula",
-          subtext: "KaTeX display formula",
-          aliases: ["math", "latex", "katex", "equation", "formula"],
+          title: "LaTeX formula",
+          subtext: "Type LaTeX code with a live preview",
+          aliases: ["latex", "math", "katex", "equation", "formula"],
           group: "Datac",
           icon: <SquareSigma className="size-4.5" />,
           onItemClick: () => setMathTarget({ blockId: null, tex: "" }),
@@ -332,6 +333,28 @@ export function BlockNoteEditor() {
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={getSlashItems}
+          floatingUIOptions={{
+            useFloatingOptions: {
+              // Open the command menu ABOVE the focused line so it never
+              // ends up squeezed into the space under the caret; drop
+              // below only when there is no room above.
+              placement: "top-start",
+              middleware: [
+                offset(10),
+                flip({ fallbackPlacements: ["bottom-start"], padding: 10 }),
+                shift({ padding: 10 }),
+                size({
+                  apply({ elements, availableHeight }) {
+                    elements.floating.style.maxHeight = `${Math.max(
+                      160,
+                      availableHeight,
+                    )}px`;
+                  },
+                  padding: 10,
+                }),
+              ],
+            },
+          }}
         />
         <SideMenuController
           sideMenu={() => (
@@ -354,7 +377,8 @@ export function BlockNoteEditor() {
       />
       </div>
 
-      <MathPanel
+      <LatexDialog
+        key={mathTarget ? (mathTarget.blockId ?? "insert") : "closed"}
         open={!!mathTarget}
         mode={mathTarget?.blockId ? "edit" : "insert"}
         initialTex={mathTarget?.tex || ""}
