@@ -102,6 +102,17 @@ export interface QuickLink {
   created: string;
 }
 
+// A launcher for an installed system app on the home page
+// (stored in ~/.datac/openapps.json). `app` is the application name
+// as passed to macOS `open -a`.
+export interface OpenApp {
+  id: string;
+  title: string;
+  icon: string;
+  app: string;
+  created: string;
+}
+
 // Per-workspace focus time, bucketed by local day (stored in ~/.datac/focus.json).
 // { [workspaceId]: { "2026-07-03": seconds, ... } }
 export type FocusLog = Record<string, Record<string, number>>;

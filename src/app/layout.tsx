@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "datac — notes",
+  title: "DataC Workspace",
   description: "A local, system-wide Notion-style notes workspace.",
 };
 

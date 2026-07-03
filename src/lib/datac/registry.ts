@@ -1,5 +1,6 @@
 import fs from "fs";
-import { DATAC_HOME, REGISTRY } from "./paths";
+import { REGISTRY } from "./paths";
+import { writeJsonAtomic } from "./store";
 import type { Registry } from "./types";
 
 const fsp = fs.promises;
@@ -13,8 +14,7 @@ export async function readRegistry(): Promise<Registry> {
 }
 
 export async function writeRegistry(reg: Registry): Promise<void> {
-  await fsp.mkdir(DATAC_HOME, { recursive: true });
-  await fsp.writeFile(REGISTRY, JSON.stringify(reg, null, 2));
+  await writeJsonAtomic(REGISTRY, reg);
 }
 
 export async function workspaceDir(id: string): Promise<string | null> {

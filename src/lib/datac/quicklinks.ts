@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { DATAC_HOME } from "./paths";
+import { writeJsonAtomic } from "./store";
 import type { QuickLink } from "./types";
 
 const fsp = fs.promises;
@@ -17,8 +18,7 @@ export async function readQuickLinks(): Promise<QuickLink[]> {
 }
 
 async function writeQuickLinks(list: QuickLink[]): Promise<void> {
-  await fsp.mkdir(DATAC_HOME, { recursive: true });
-  await fsp.writeFile(LINKS, JSON.stringify(list, null, 2));
+  await writeJsonAtomic(LINKS, list);
 }
 
 // Require an absolute http(s) URL; prepend https:// for bare domains.

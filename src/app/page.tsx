@@ -2,6 +2,7 @@ import path from "path";
 import { readRegistry } from "@/lib/datac/registry";
 import { focusTotals } from "@/lib/datac/focus";
 import { readQuickLinks } from "@/lib/datac/quicklinks";
+import { readOpenApps } from "@/lib/datac/openapps";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   WorkspacesList,
@@ -14,10 +15,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [reg, totals, links] = await Promise.all([
+  const [reg, totals, links, apps] = await Promise.all([
     readRegistry(),
     focusTotals(),
     readQuickLinks(),
+    readOpenApps(),
   ]);
 
   const rows: WorkspaceRow[] = Object.entries(reg)
@@ -54,7 +56,7 @@ export default async function Home() {
         </main>
 
         <aside className="flex flex-col gap-6 border-t px-5 py-8 lg:border-t-0">
-          <OpenApps />
+          <OpenApps initial={apps} />
           <div className="border-t" />
           <QuickLinks initial={links} />
         </aside>
