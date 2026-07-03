@@ -52,6 +52,7 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useEditor } from "./store";
+import { PageIcon } from "@/components/page-icon";
 import { statusInfo } from "@/lib/datac/constants";
 import type { DocSummary } from "@/lib/datac/types";
 import { toast } from "sonner";
@@ -176,8 +177,8 @@ export function AppSidebar() {
                 )
               ) : null}
             </button>
-            <span className="shrink-0 text-[13px] leading-none">
-              {d.icon || "📄"}
+            <span className="flex shrink-0 items-center text-[13px] leading-none">
+              <PageIcon name={d.icon} className="text-muted-foreground size-3.5" />
             </span>
             <span className="flex-1 truncate">{d.title || "Untitled"}</span>
             <span

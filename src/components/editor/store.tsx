@@ -6,6 +6,12 @@ import { createClient, type DatacClient, type FullDoc } from "@/lib/datac/client
 import type { Block, DocSummary } from "@/lib/datac/types";
 import { parseMarkdownToBlocks, blockJsonToMd } from "@/lib/datac/markdown";
 import { randomId } from "@/lib/datac/constants";
+import {
+  isBlockNoteDoc,
+  legacyToBlockNote,
+  blockNoteToMd,
+  type BnBlock,
+} from "@/lib/datac/blocknote-convert";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -221,6 +227,12 @@ export function EditorProvider({
       } else {
         nextBlocks = Array.isArray(doc.blocks) ? doc.blocks : [];
       }
+      // Legacy block format → BlockNote document (one-time; the server
+      // keeps a .bak of the original file on the first converted save).
+      if (nextBlocks.length && !isBlockNoteDoc(nextBlocks)) {
+        nextBlocks = legacyToBlockNote(nextBlocks) as unknown as Block[];
+        migrated = true;
+      }
       const nextMeta: DocMeta = {
         title: doc.title === "Untitled" ? "" : doc.title || "",
         icon: doc.icon || "",
@@ -361,8 +373,21 @@ export function EditorProvider({
       const parent = await client.get(parentId);
       if (parent && !parent.error) {
         const pb = (parent.blocks || []).slice();
-        if (!pb.some((b) => b.type === "page" && b.pageId === id))
-          pb.push({ id: randomId(), type: "page", pageId: id, note: "" });
+        const hasRef = pb.some(
+          (b) =>
+            b.type === "page" &&
+            (b.pageId === id ||
+              (b.props as { pageId?: string } | undefined)?.pageId === id),
+        );
+        if (!hasRef) {
+          if (!pb.length || isBlockNoteDoc(pb))
+            pb.push({
+              id: randomId(),
+              type: "page",
+              props: { pageId: id, link: false, note: "" },
+            } as Block);
+          else pb.push({ id: randomId(), type: "page", pageId: id, note: "" });
+        }
         await client.save(parentId, { ...docFields(parent), blocks: pb });
       }
       await refreshDocs();
@@ -383,11 +408,30 @@ export function EditorProvider({
         if (!doc || doc.error) return "";
         const h = "#".repeat(Math.min(level, 6));
         let out = `${h} ${doc.icon ? doc.icon + " " : ""}${doc.title || "Untitled"}\n\n`;
-        for (const b of doc.blocks || []) {
-          if (b.type === "page" && b.pageId)
-            out += (await pageToMd(b.pageId, level + 1)) + "\n";
-          else out += blockJsonToMd(b) + "\n\n";
-        }
+        const bn = isBlockNoteDoc(doc.blocks);
+        const walk = async (blocks: Block[]) => {
+          for (const b of blocks || []) {
+            const pageId =
+              b.type === "page"
+                ? ((b.props as { pageId?: string } | undefined)?.pageId ??
+                  (b.pageId as string | undefined))
+                : undefined;
+            if (pageId) {
+              out += (await pageToMd(pageId, level + 1)) + "\n";
+              continue;
+            }
+            if (bn) {
+              const kids = (b as unknown as BnBlock).children;
+              const t = b.type as string;
+              const isLayout = t === "columnList" || t === "column";
+              if (!isLayout) out += blockNoteToMd(b as unknown as BnBlock) + "\n\n";
+              if (isLayout && Array.isArray(kids)) await walk(kids as unknown as Block[]);
+            } else {
+              out += blockJsonToMd(b) + "\n\n";
+            }
+          }
+        };
+        await walk(doc.blocks || []);
         return out;
       };
       const md = await pageToMd(target, 1);

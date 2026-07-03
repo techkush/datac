@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ImageIcon, Shuffle, Smile, X } from "lucide-react";
+import { ImageIcon, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -9,7 +9,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useEditor } from "./store";
-import { COVERS, EMOJIS } from "@/lib/datac/constants";
+import { COVERS } from "@/lib/datac/constants";
+import { PageIcon, LucideIconGrid } from "@/components/page-icon";
 import { readAsDataURL } from "@/lib/datac/upload";
 import { toast } from "sonner";
 
@@ -99,13 +100,14 @@ export function PageHead() {
           {meta.icon ? (
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverTrigger asChild>
-                <button className="hover:bg-accent -ml-1 rounded-md px-1 text-6xl leading-none transition-colors">
-                  {meta.icon}
+                <button className="hover:bg-accent -ml-2 rounded-md p-1.5 text-6xl leading-none opacity-75 transition-opacity hover:opacity-100 transition-colors">
+                  <PageIcon name={meta.icon} className="size-14" />
                 </button>
               </PopoverTrigger>
-              <EmojiMenu
-                onPick={(e) => {
-                  setMeta({ icon: e });
+              <IconMenu
+                value={meta.icon}
+                onPick={(name) => {
+                  setMeta({ icon: name });
                   setEmojiOpen(false);
                 }}
                 onRemove={() => {
@@ -128,9 +130,10 @@ export function PageHead() {
                     <Smile className="size-4" /> Add icon
                   </Button>
                 </PopoverTrigger>
-                <EmojiMenu
-                  onPick={(e) => {
-                    setMeta({ icon: e });
+                <IconMenu
+                  value={meta.icon}
+                  onPick={(name) => {
+                    setMeta({ icon: name });
                     setEmojiOpen(false);
                   }}
                   onRemove={() => setEmojiOpen(false)}
@@ -193,39 +196,18 @@ export function PageHead() {
   );
 }
 
-function EmojiMenu({
+function IconMenu({
+  value,
   onPick,
   onRemove,
 }: {
-  onPick: (e: string) => void;
+  value: string;
+  onPick: (name: string) => void;
   onRemove: () => void;
 }) {
   return (
-    <PopoverContent className="w-72 p-2" align="start">
-      <div className="mb-2 flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7"
-          onClick={() => onPick(EMOJIS[Math.floor(Math.random() * EMOJIS.length)])}
-        >
-          <Shuffle className="size-3.5" /> Random
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7" onClick={onRemove}>
-          <X className="size-3.5" /> Remove
-        </Button>
-      </div>
-      <div className="grid max-h-56 grid-cols-8 gap-0.5 overflow-y-auto">
-        {EMOJIS.map((e, i) => (
-          <button
-            key={i}
-            onClick={() => onPick(e)}
-            className="hover:bg-accent flex size-8 items-center justify-center rounded text-lg"
-          >
-            {e}
-          </button>
-        ))}
-      </div>
+    <PopoverContent className="w-80 p-2" align="start">
+      <LucideIconGrid value={value} onPick={onPick} onRemove={onRemove} />
     </PopoverContent>
   );
 }

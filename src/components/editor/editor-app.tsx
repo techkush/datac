@@ -9,8 +9,8 @@ import dynamic from "next/dynamic";
 import { PageHead } from "./page-head";
 import { Button } from "@/components/ui/button";
 
-const EditorCore = dynamic(
-  () => import("./editor-core").then((m) => m.EditorCore),
+const BlockNoteEditor = dynamic(
+  () => import("./blocknote-editor").then((m) => m.BlockNoteEditor),
   { ssr: false },
 );
 import { FilePlus2 } from "lucide-react";
@@ -37,8 +37,10 @@ function DocArea() {
   return (
     <div className="flex-1 overflow-y-auto">
       <PageHead />
-      <div className="mx-auto w-full max-w-3xl px-6 sm:px-12">
-        <EditorCore key={currentId} />
+      {/* Same container geometry as PageHead so the title and the block
+          text share one left edge; the drag handle floats in the padding. */}
+      <div className="mx-auto w-full max-w-3xl px-6 pb-24 sm:px-12">
+        <BlockNoteEditor key={currentId} />
       </div>
     </div>
   );
