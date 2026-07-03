@@ -18,6 +18,21 @@ export function renderMathHtml(tex: string): string {
   }
 }
 
+// Inline-mode render for small UI elements (toolbar symbol buttons).
+export function renderMathInlineHtml(tex: string): string {
+  const t = String(tex ?? "").trim();
+  if (!t) return "";
+  try {
+    return katex.renderToString(t, {
+      displayMode: false,
+      throwOnError: false,
+      output: "html",
+    });
+  } catch {
+    return t.replace(/</g, "&lt;");
+  }
+}
+
 /* ---- Unicode → LaTeX best-effort cleaner (ported from legacy math.js) --- */
 const MATH_SUP: Record<string, string> = {
   "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6",

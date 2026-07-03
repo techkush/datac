@@ -43,14 +43,14 @@ function MathBlockView({ block }: { block: { id: string; props: { tex: string } 
     <div
       className="datac-math hover:bg-accent/40 w-full cursor-pointer rounded-md px-2 py-1 transition-colors"
       role="button"
-      title="Click to edit formula"
+      title="Click to edit LaTeX"
       onClick={() => bridge.editMath(block.id, tex)}
     >
       {tex ? (
         <div dangerouslySetInnerHTML={{ __html: html }} />
       ) : (
         <span className="text-muted-foreground flex items-center gap-2 text-sm">
-          <SquareSigma className="size-4" /> Empty formula — click to edit
+          <SquareSigma className="size-4" /> Empty LaTeX formula — click to edit
         </span>
       )}
     </div>
