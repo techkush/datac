@@ -2,123 +2,313 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { FolderOpen, Trash2 } from "lucide-react";
+import {
+  BarChart3,
+  FolderOpen,
+  RotateCcw,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { formatDuration, formatOpened } from "@/lib/datac/format";
+import { StatsPanel } from "@/components/workspaces/stats-panel";
 
 export interface WorkspaceRow {
   id: string;
   title: string;
-  projectDir: string;
+  folderName: string;
+  opened: string;
+  focusSeconds: number;
+  trashed: boolean;
+}
+
+function IconAction({
+  label,
+  onClick,
+  children,
+  destructive,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+  destructive?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={
+            destructive
+              ? "text-muted-foreground hover:text-destructive size-8 shrink-0"
+              : "text-muted-foreground hover:text-foreground size-8 shrink-0"
+          }
+          aria-label={label}
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function WorkspacesList({ initial }: { initial: WorkspaceRow[] }) {
   const [rows, setRows] = React.useState(initial);
-  const [target, setTarget] = React.useState<WorkspaceRow | null>(null);
-  const [busy, setBusy] = React.useState(false);
+  const [statsTarget, setStatsTarget] = React.useState<WorkspaceRow | null>(
+    null,
+  );
+  const [foreverTarget, setForeverTarget] =
+    React.useState<WorkspaceRow | null>(null);
 
-  async function confirmDelete() {
-    if (!target) return;
+  const active = rows.filter((w) => !w.trashed);
+  const trash = rows.filter((w) => w.trashed);
+
+  async function setTrashed(w: WorkspaceRow, on: boolean) {
+    try {
+      const r = await fetch(`/api/workspaces/${w.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: on ? "trash" : "restore" }),
+      });
+      if (!r.ok) throw new Error();
+      setRows((rs) =>
+        rs.map((x) => (x.id === w.id ? { ...x, trashed: on } : x)),
+      );
+      toast.success(
+        on ? `Moved “${w.title}” to trash` : `Restored “${w.title}”`,
+      );
+    } catch {
+      toast.error(on ? "Move to trash failed" : "Restore failed");
+    }
+  }
+
+  async function openFolder(w: WorkspaceRow) {
+    try {
+      const r = await fetch(`/api/w/${w.id}/reveal`, { method: "POST" });
+      if (!r.ok) throw new Error();
+    } catch {
+      toast.error("Could not open the project folder");
+    }
+  }
+
+  return (
+    <>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          Workspaces
+        </h2>
+
+        {!active.length ? (
+          <Card className="text-muted-foreground border-dashed p-8 text-center text-sm">
+            No workspaces yet. Run{" "}
+            <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+              datac init
+            </code>{" "}
+            in a project folder.
+          </Card>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {active.map((w) => (
+              <li key={w.id}>
+                <Card className="group flex-row items-center gap-2 p-3.5 transition-colors">
+                  <Link
+                    href={`/w/${w.id}`}
+                    className="flex min-w-0 flex-1 flex-col gap-0.5"
+                  >
+                    <span className="truncate text-base font-semibold">
+                      {w.title}
+                    </span>
+                    <span className="text-muted-foreground truncate text-xs">
+                      {formatOpened(w.opened)} ·{" "}
+                      {formatDuration(w.focusSeconds)} focus
+                    </span>
+                  </Link>
+                  <IconAction
+                    label="Open project folder"
+                    onClick={() => openFolder(w)}
+                  >
+                    <FolderOpen className="size-4" />
+                  </IconAction>
+                  <IconAction
+                    label="Statistics"
+                    onClick={() => setStatsTarget(w)}
+                  >
+                    <BarChart3 className="size-4" />
+                  </IconAction>
+                  <IconAction
+                    label="Move to trash"
+                    destructive
+                    onClick={() => setTrashed(w, true)}
+                  >
+                    <Trash2 className="size-4" />
+                  </IconAction>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {trash.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase">
+            <Trash2 className="size-3.5" /> Trash
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {trash.map((w) => (
+              <li key={w.id}>
+                <Card className="flex-row items-center gap-2 p-3.5 opacity-75">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-base font-semibold">
+                      {w.title}
+                    </span>
+                    <span className="text-muted-foreground truncate text-xs">
+                      {formatOpened(w.opened)} ·{" "}
+                      {formatDuration(w.focusSeconds)} focus
+                    </span>
+                  </div>
+                  <IconAction
+                    label="Restore"
+                    onClick={() => setTrashed(w, false)}
+                  >
+                    <RotateCcw className="size-4" />
+                  </IconAction>
+                  <IconAction
+                    label="Delete forever"
+                    destructive
+                    onClick={() => setForeverTarget(w)}
+                  >
+                    <Trash2 className="size-4" />
+                  </IconAction>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <DeleteForeverDialog
+        key={foreverTarget?.id ?? "closed"}
+        target={foreverTarget}
+        onClose={() => setForeverTarget(null)}
+        onDeleted={(id) => setRows((rs) => rs.filter((x) => x.id !== id))}
+      />
+
+      <StatsPanel
+        target={statsTarget}
+        onClose={() => setStatsTarget(null)}
+      />
+    </>
+  );
+}
+
+// "Delete forever" removes only the entry from this list — nothing on disk.
+// The user must type the project folder's name to confirm.
+function DeleteForeverDialog({
+  target,
+  onClose,
+  onDeleted,
+}: {
+  target: WorkspaceRow | null;
+  onClose: () => void;
+  onDeleted: (id: string) => void;
+}) {
+  // Fresh state per target via the `key` prop on this dialog.
+  const [typed, setTyped] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const match = !!target && typed.trim() === target.folderName;
+
+  async function confirm() {
+    if (!target || !match) return;
     setBusy(true);
     try {
       const r = await fetch(`/api/workspaces/${target.id}`, {
         method: "DELETE",
       });
-      if (r.ok) {
-        setRows((rs) => rs.filter((x) => x.id !== target.id));
-        toast.success(`Deleted “${target.title}”`);
-      } else {
-        toast.error("Delete failed");
-      }
+      if (!r.ok) throw new Error();
+      onDeleted(target.id);
+      toast.success(`Removed “${target.title}” from workspaces`);
+      onClose();
     } catch {
       toast.error("Delete failed");
     } finally {
       setBusy(false);
-      setTarget(null);
     }
   }
 
-  if (!rows.length) {
-    return (
-      <Card className="text-muted-foreground border-dashed p-8 text-center text-sm">
-        No workspaces yet. Run{" "}
-        <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
-          datac init
-        </code>{" "}
-        in a project folder.
-      </Card>
-    );
-  }
-
   return (
-    <>
-      <ul className="flex flex-col gap-2">
-        {rows.map((w) => (
-          <li key={w.id}>
-            <Card className="flex-row items-center gap-3 p-3.5 transition-colors">
-              <Link
-                href={`/w/${w.id}`}
-                className="flex min-w-0 flex-1 flex-col gap-0.5"
-              >
-                <span className="truncate text-base font-semibold">
-                  {w.title || "Untitled"}
-                </span>
-                <span className="text-muted-foreground truncate font-mono text-xs">
-                  {w.projectDir}
-                </span>
-              </Link>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive shrink-0"
-                onClick={() => setTarget(w)}
-              >
-                <Trash2 className="size-4" />
-                Delete
-              </Button>
-            </Card>
-          </li>
-        ))}
-      </ul>
-
-      <AlertDialog open={!!target} onOpenChange={(o) => !o && setTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <FolderOpen className="size-5" /> Delete “{target?.title}”?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently removes its dataC notes and clears it from this
-              list. The project folder is kept unless it becomes empty. This
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                confirmDelete();
-              }}
-              disabled={busy}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {busy ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <Dialog open={!!target} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TriangleAlert className="text-destructive size-5" /> Delete
+            “{target?.title}” forever?
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="flex flex-col gap-2">
+              <span>
+                This only removes the workspace from this list. Nothing is
+                deleted from your disk — the project folder, its notes and{" "}
+                <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">
+                  open.dc
+                </code>{" "}
+                stay where they are. Opening{" "}
+                <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">
+                  open.dc
+                </code>{" "}
+                again adds it back.
+              </span>
+              <span>
+                Type the folder name{" "}
+                <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">
+                  {target?.folderName}
+                </code>{" "}
+                to confirm.
+              </span>
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={target?.folderName}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirm();
+          }}
+        />
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={!match || busy}
+            onClick={confirm}
+          >
+            {busy ? "Deleting…" : "Delete forever"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
