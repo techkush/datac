@@ -78,12 +78,13 @@ function nearestName(hex: string): string {
   return best;
 }
 
-// Value label in the chosen display format.
+// Value label in the chosen display format — bare numbers, no rgb()/hsl()
+// wrapper.
 function formatValue(hex: string, format: ColorFormat): string {
   const rgb = hexToRgb(hex);
   if (!rgb) return hex.toUpperCase();
   const [r, g, b] = rgb;
-  if (format === "rgb") return `rgb(${r}, ${g}, ${b})`;
+  if (format === "rgb") return `${r}, ${g}, ${b}`;
   if (format === "hsl") {
     const rn = r / 255, gn = g / 255, bn = b / 255;
     const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
@@ -97,7 +98,7 @@ function formatValue(hex: string, format: ColorFormat): string {
       else h = 60 * ((rn - gn) / d + 4);
       if (h < 0) h += 360;
     }
-    return `hsl(${Math.round(h)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+    return `${Math.round(h)}°, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%`;
   }
   return hex.toUpperCase();
 }
