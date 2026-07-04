@@ -12,19 +12,22 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { WORKSPACE_COLORS } from "@/lib/datac/colors";
+import { CardEditingContext } from "./card-edit-context";
 import { cn } from "@/lib/utils";
 import { useBoard } from "./store";
-import { usePointerDrag } from "./use-drag";
+import { boardOverlayOpen, usePointerDrag } from "./use-drag";
 import type { BoardCard, BoardCardType } from "@/lib/datac/board-types";
 import { NoteCardView } from "./cards/note-card";
 import { LinkCardView } from "./cards/link-card";
 import { TodoCardView } from "./cards/todo-card";
-import { ImageCardView } from "./cards/image-card";
+import { ImageCardView, ImageMenuItems } from "./cards/image-card";
 import { BoardCardView } from "./cards/board-card";
 import { ColumnCardView } from "./cards/column-card";
 import { TableCardView } from "./cards/table-card";
 import { SketchCardView } from "./cards/sketch-card";
-import { ColorCardView } from "./cards/color-card";
+import { ColorCardView, ColorMenuItems } from "./cards/color-card";
+import { HeadingCardView, HeadingMenuItems } from "./cards/heading-card";
+import { PageCardView, PageMenuItems } from "./cards/page-card";
 
 // How each card type resizes: fixed-height types resize freely, auto-height
 // types only by width, images keep their aspect ratio.
@@ -39,10 +42,23 @@ const RESIZE: Record<BoardCardType, ResizeMode> = {
   image: "aspect",
   sketch: "both",
   color: "both",
+  heading: "width",
+  page: "width",
 };
 
 const MIN_W = 140;
 const MIN_H = 100;
+
+// Types whose double-click enters edit mode (media types open instead).
+const EDITABLE_TYPES = new Set([
+  "note",
+  "todo",
+  "link",
+  "table",
+  "color",
+  "column",
+  "heading",
+]);
 
 // Elements that must receive the pointer instead of starting a card drag.
 const NO_DRAG =
@@ -68,6 +84,10 @@ export function CardContent({ card }: { card: BoardCard }) {
       return <SketchCardView card={card} />;
     case "color":
       return <ColorCardView card={card} />;
+    case "heading":
+      return <HeadingCardView card={card} />;
+    case "page":
+      return <PageCardView card={card} />;
   }
 }
 
@@ -83,7 +103,12 @@ export function CardShell({ card }: { card: BoardCard }) {
     sendToBack,
     duplicateCards,
     removeCards,
-    dockCard,
+    copyCards,
+    cutCards,
+    pasteCards,
+    hasClipboard,
+    isFreshCard,
+    setGuides,
   } = useBoard();
   const selected = selection.has(card.id);
   // Context-menu actions apply to the whole selection when the card is in
@@ -99,37 +124,138 @@ export function CardShell({ card }: { card: BoardCard }) {
   const selectionRef = React.useRef(selection);
   selectionRef.current = selection;
 
+  /* ---- edit mode ----------------------------------------------------------
+   * Content is inert until the card is double-clicked, so single presses
+   * anywhere (including over inputs) drag the card. Freshly added cards
+   * start editing so you can type straight away. Deselecting exits. */
+  const shellRef = React.useRef<HTMLDivElement | null>(null);
+  const openRef = React.useRef<(() => void) | null>(null);
+  const [editing, setEditing] = React.useState(() => isFreshCard(card.id));
+  const editCtx = React.useMemo(
+    () => ({ editing, setEditing, openRef }),
+    [editing],
+  );
+
+  React.useEffect(() => {
+    if (!selected && editing) setEditing(false);
+  }, [selected, editing]);
+
+  const onShellDoubleClick = () => {
+    if (EDITABLE_TYPES.has(card.type) && !editing) {
+      // ensure the card is selected — editing exits on deselect
+      if (!selectionRef.current.has(card.id))
+        setSelection(new Set([card.id]));
+      setEditing(true);
+      // focus the first control once it's interactive
+      requestAnimationFrame(() =>
+        shellRef.current
+          ?.querySelector<HTMLElement>(
+            'input, textarea, [contenteditable="true"]',
+          )
+          ?.focus(),
+      );
+    }
+    openRef.current?.();
+  };
+
+  // While not editing, gate the content (media cards gate always — their
+  // double-click opens something instead of an edit mode).
+  const gated = EDITABLE_TYPES.has(card.type)
+    ? !editing
+    : (card.type === "image" && !!card.src) ||
+      (card.type === "board" && !!card.boardId) ||
+      (card.type === "page" && !!card.pageId);
+
   /* ---- move -------------------------------------------------------------- */
   const startPos = React.useRef(new Map<string, { x: number; y: number }>());
   const pressedInSelection = React.useRef(false);
 
-  // Column drop targets: only single non-column cards can dock. Highlight is
-  // applied straight to the DOM to avoid re-rendering columns per move.
-  const hitColumn = (e: PointerEvent): HTMLElement | null => {
-    if (card.type === "column" || startPos.current.size !== 1) return null;
-    for (const el of document.querySelectorAll<HTMLElement>(
-      "[data-column-drop]",
-    )) {
-      const r = el.getBoundingClientRect();
-      if (
-        e.clientX > r.left &&
-        e.clientX < r.right &&
-        e.clientY > r.top &&
-        e.clientY < r.bottom
-      )
-        return el;
-    }
-    return null;
+  /* ---- smart alignment ----------------------------------------------------
+   * While dragging, the pressed card's edges and centers snap to neighbor
+   * edges/centers within a small tolerance; guide lines render in canvas. */
+  interface Box {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }
+  const neighborsRef = React.useRef<Box[]>([]);
+  const dragSizeRef = React.useRef({ w: card.w, h: 0 });
+
+  const snapshotNeighbors = (sel: Set<string>) => {
+    const zoom = zoomRef.current;
+    dragSizeRef.current = {
+      w: card.w,
+      h:
+        card.h ??
+        (shellRef.current?.getBoundingClientRect().height ?? 0) / zoom,
+    };
+    neighborsRef.current = cardsRef.current
+      .filter((c) => !sel.has(c.id))
+      .map((c) => {
+        const el = document.querySelector(
+          `[data-card-id="${CSS.escape(c.id)}"]`,
+        );
+        const h =
+          c.h ?? (el ? el.getBoundingClientRect().height / zoom : 0);
+        return { x: c.x, y: c.y, w: c.w, h };
+      });
   };
-  const clearDropHover = () =>
-    document
-      .querySelectorAll("[data-column-drop][data-drop-hover]")
-      .forEach((el) => el.removeAttribute("data-drop-hover"));
+
+  // Snap (nx, ny) against the neighbor boxes; returns the adjusted position
+  // and the guide lines to show.
+  const applySnap = (nx: number, ny: number) => {
+    const { w, h } = dragSizeRef.current;
+    const tol = 5 / zoomRef.current;
+    let bestV: { d: number; x: number; n: Box } | null = null;
+    let bestH: { d: number; y: number; n: Box } | null = null;
+    for (const n of neighborsRef.current) {
+      for (const t of [n.x, n.x + n.w / 2, n.x + n.w])
+        for (const c of [nx, nx + w / 2, nx + w]) {
+          const d = t - c;
+          if (Math.abs(d) <= tol && (!bestV || Math.abs(d) < Math.abs(bestV.d)))
+            bestV = { d, x: t, n };
+        }
+      for (const t of [n.y, n.y + n.h / 2, n.y + n.h])
+        for (const c of [ny, ny + h / 2, ny + h]) {
+          const d = t - c;
+          if (Math.abs(d) <= tol && (!bestH || Math.abs(d) < Math.abs(bestH.d)))
+            bestH = { d, y: t, n };
+        }
+    }
+    const sx = nx + (bestV?.d ?? 0);
+    const sy = ny + (bestH?.d ?? 0);
+    setGuides(
+      bestV || bestH
+        ? {
+            ...(bestV
+              ? {
+                  v: {
+                    x: bestV.x,
+                    y0: Math.min(sy, bestV.n.y),
+                    y1: Math.max(sy + h, bestV.n.y + bestV.n.h),
+                  },
+                }
+              : {}),
+            ...(bestH
+              ? {
+                  h: {
+                    y: bestH.y,
+                    x0: Math.min(sx, bestH.n.x),
+                    x1: Math.max(sx + w, bestH.n.x + bestH.n.w),
+                  },
+                }
+              : {}),
+          }
+        : null,
+    );
+    return { dx: bestV?.d ?? 0, dy: bestH?.d ?? 0 };
+  };
 
   const onDragDown = usePointerDrag({
     onStart: (e) => {
+      if (boardOverlayOpen()) return false; // reading panel / lightbox up
       if ((e.target as HTMLElement).closest(NO_DRAG)) return false;
-      // nested cards (inside a column) are handled by the column in phase 3
       pressedInSelection.current = selectionRef.current.has(card.id);
       let sel: Set<string>;
       if (e.shiftKey) {
@@ -147,42 +273,38 @@ export function CardShell({ card }: { card: BoardCard }) {
       }
       setSelection(sel);
       bringToFront([...sel]);
+      if (card.locked) return false; // selectable, but pinned in place
+      // locked cards in a multi-selection stay put while the rest move
       startPos.current = new Map(
         cardsRef.current
-          .filter((c) => sel.has(c.id) && !c.columnId)
+          .filter((c) => sel.has(c.id) && !c.locked)
           .map((c) => [c.id, { x: c.x, y: c.y }]),
       );
+      snapshotNeighbors(sel);
     },
-    onMove: (e, d) => {
+    onMove: (_e, d) => {
       if (!d.moved) return;
+      const ddx = d.dx / zoomRef.current;
+      const ddy = d.dy / zoomRef.current;
+      // snap using the pressed card, then shift the whole batch by the same
+      // correction so a multi-selection moves as one rigid group
+      const p0 = startPos.current.get(card.id);
+      const snap = p0
+        ? applySnap(Math.round(p0.x + ddx), Math.round(p0.y + ddy))
+        : { dx: 0, dy: 0 };
       const batch: Record<string, { x: number; y: number }> = {};
       for (const [id, p] of startPos.current)
         batch[id] = {
-          x: Math.round(p.x + d.dx / zoomRef.current),
-          y: Math.round(p.y + d.dy / zoomRef.current),
+          x: Math.round(p.x + ddx) + snap.dx,
+          y: Math.round(p.y + ddy) + snap.dy,
         };
       updateCards(batch);
-      clearDropHover();
-      hitColumn(e)?.setAttribute("data-drop-hover", "1");
     },
     onEnd: (e, d) => {
-      clearDropHover();
+      setGuides(null);
       // plain click on an already multi-selected card collapses to it
-      if (!d.moved && !e.shiftKey && pressedInSelection.current) {
+      if (!d.moved && !e.shiftKey && pressedInSelection.current)
         setSelection(new Set([card.id]));
-        return;
-      }
-      if (!d.moved) return;
-      const col = hitColumn(e);
-      if (!col) return;
-      // insertion index = docked siblings whose midpoint is above the pointer
-      const index = [
-        ...col.querySelectorAll<HTMLElement>("[data-docked-id]"),
-      ].filter((el) => {
-        const b = el.getBoundingClientRect();
-        return b.top + b.height / 2 < e.clientY;
-      }).length;
-      dockCard(card.id, col.dataset.columnDrop!, index);
     },
   });
 
@@ -197,6 +319,7 @@ export function CardShell({ card }: { card: BoardCard }) {
 
   const onResizeDown = usePointerDrag({
     onStart: () => {
+      if (boardOverlayOpen()) return false;
       startSize.current = { w: card.w, h: card.h ?? 0 };
     },
     onMove: (e, d) => {
@@ -226,24 +349,28 @@ export function CardShell({ card }: { card: BoardCard }) {
     ? { background: `color-mix(in oklab, ${card.color} 16%, var(--card))` }
     : undefined;
 
-  // Sketches sit transparently over the board: no card chrome, and only
-  // their strokes (plus the resize handles) catch the pointer.
-  const transparent = card.type === "sketch";
+  // Transparent cards carry no chrome (background/border/shadow): sketches
+  // sit over the board with only their strokes catching the pointer, and
+  // headings read as free-standing text.
+  const transparent = card.type === "sketch" || card.type === "heading";
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           data-card-id={card.id}
+          ref={shellRef}
           className={cn(
-            "absolute rounded-lg",
-            transparent
-              ? "pointer-events-none"
-              : "bg-card text-card-foreground border shadow-sm",
+            "absolute rounded-md",
+            !transparent && "bg-card text-card-foreground border shadow-xs",
+            // sketches: only strokes catch the pointer (empty area is
+            // click-through); headings stay a normal drag surface
+            card.type === "sketch" && "pointer-events-none",
+            // selection: thin near-black outline (flips light in dark mode)
             selected &&
               (transparent
-                ? "ring-primary/40 ring-1"
-                : "ring-primary/60 ring-2"),
+                ? "ring-foreground/50 ring-1"
+                : "ring-foreground ring-1"),
           )}
           style={{
             left: card.x,
@@ -254,15 +381,22 @@ export function CardShell({ card }: { card: BoardCard }) {
             ...tint,
           }}
           onPointerDown={onDragDown}
+          onDoubleClick={onShellDoubleClick}
           onContextMenu={(e) => {
             e.stopPropagation(); // keep the canvas menu closed
             if (!selectionRef.current.has(card.id))
               setSelection(new Set([card.id]));
           }}
         >
-      <CardContent card={card} />
+      <CardEditingContext.Provider value={editCtx}>
+        {/* h-full so fixed-height cards (color, image, sketch) keep their
+            content stretched despite the extra gating wrapper */}
+        <div className={cn("h-full", gated && "pointer-events-none")}>
+          <CardContent card={card} />
+        </div>
+      </CardEditingContext.Provider>
 
-      {selected && (
+      {selected && !card.locked && (
         <>
           <div
             className="pointer-events-auto absolute top-0 -right-1 bottom-0 w-2 cursor-ew-resize"
@@ -275,17 +409,51 @@ export function CardShell({ card }: { card: BoardCard }) {
             />
           )}
           <div
-            className="bg-primary pointer-events-auto absolute -right-1.5 -bottom-1.5 size-3 cursor-nwse-resize rounded-full border-2 border-white shadow dark:border-neutral-900"
+            className="bg-background border-foreground pointer-events-auto absolute -right-1 -bottom-1 size-2.5 cursor-nwse-resize border"
             onPointerDown={resizeHandle("se")}
           />
         </>
       )}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
+      <ContextMenuContent className="w-52">
+        <ContextMenuItem onClick={() => cutCards(targetIds())}>
+          Cut
+          <span className="text-muted-foreground ml-auto text-xs">⌘X</span>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => copyCards(targetIds())}>
+          Copy
+          <span className="text-muted-foreground ml-auto text-xs">⌘C</span>
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!hasClipboard()} onClick={pasteCards}>
+          Paste
+          <span className="text-muted-foreground ml-auto text-xs">⌘V</span>
+        </ContextMenuItem>
         <ContextMenuItem onClick={() => duplicateCards(targetIds())}>
           Duplicate
           <span className="text-muted-foreground ml-auto text-xs">⌘D</span>
+        </ContextMenuItem>
+        {card.type === "image" && <ImageMenuItems card={card} />}
+        {(card.type === "heading" ||
+          card.type === "color" ||
+          (card.type === "page" && !!card.pageId)) && (
+          <ContextMenuSeparator />
+        )}
+        {card.type === "heading" && <HeadingMenuItems card={card} />}
+        {card.type === "color" && <ColorMenuItems card={card} />}
+        {card.type === "page" && card.pageId && <PageMenuItems card={card} />}
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={() =>
+            updateCards(
+              Object.fromEntries(
+                targetIds().map((id) => [id, { locked: !card.locked }]),
+              ),
+            )
+          }
+        >
+          Lock position
+          {card.locked && <span className="ml-auto text-xs">✓</span>}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => bringToFront(targetIds())}>
           Bring to front

@@ -40,27 +40,23 @@ export async function listBoards(dataDir: string): Promise<BoardSummary[]> {
   return boards;
 }
 
-// Column containers keep an ordered `children` list of docked card ids, and
-// each docked card carries a `columnId` reverse pointer. Reconcile both on
-// load so a torn save never leaves dangling references: `children` wins.
+// Columns used to dock cards (children/columnId pointers). That design is
+// gone — columns are collapsible note sections now. Free any legacy docked
+// cards, fanning them out just under their old column so nothing vanishes.
 function reconcileColumns(cards: BoardCard[]): BoardCard[] {
   const byId = new Map(cards.map((c) => [c.id, c]));
-  const docked = new Map<string, string>(); // cardId -> columnId
   for (const c of cards) {
     if (c.type !== "column") continue;
-    c.children = (Array.isArray(c.children) ? c.children : []).filter((id) => {
+    (Array.isArray(c.children) ? c.children : []).forEach((id, i) => {
       const child = byId.get(id);
-      // drop ids that don't resolve, aren't dockable, or are claimed twice
-      if (!child || child.type === "column" || docked.has(id)) return false;
-      docked.set(id, c.id);
-      return true;
+      if (child) {
+        child.x = c.x + 20;
+        child.y = c.y + 48 + i * 90;
+      }
     });
+    c.children = [];
   }
-  for (const c of cards) {
-    const col = docked.get(c.id);
-    if (col) c.columnId = col;
-    else if (c.columnId) delete c.columnId;
-  }
+  for (const c of cards) if (c.columnId) delete c.columnId;
   return cards;
 }
 

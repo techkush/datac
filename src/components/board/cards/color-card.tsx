@@ -1,8 +1,15 @@
 "use client";
 
 import * as React from "react";
+import {
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from "@/components/ui/context-menu";
 import { useBoard } from "../store";
-import type { ColorCard } from "@/lib/datac/board-types";
+import type { ColorCard, ColorFormat } from "@/lib/datac/board-types";
 
 // Compact named-color reference for the auto name below the swatch — the
 // nearest entry (RGB distance) is shown until the user types their own.
@@ -71,6 +78,30 @@ function nearestName(hex: string): string {
   return best;
 }
 
+// Value label in the chosen display format.
+function formatValue(hex: string, format: ColorFormat): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex.toUpperCase();
+  const [r, g, b] = rgb;
+  if (format === "rgb") return `rgb(${r}, ${g}, ${b})`;
+  if (format === "hsl") {
+    const rn = r / 255, gn = g / 255, bn = b / 255;
+    const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+    const l = (max + min) / 2;
+    const d = max - min;
+    let h = 0;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    if (d !== 0) {
+      if (max === rn) h = 60 * (((gn - bn) / d) % 6);
+      else if (max === gn) h = 60 * ((bn - rn) / d + 2);
+      else h = 60 * ((rn - gn) / d + 4);
+      if (h < 0) h += 360;
+    }
+    return `hsl(${Math.round(h)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+  }
+  return hex.toUpperCase();
+}
+
 // Black or white text, whichever reads better on the swatch.
 function textOn(hex: string): string {
   const rgb = hexToRgb(hex);
@@ -96,9 +127,10 @@ export function ColorCardView({ card }: { card: ColorCard }) {
   };
 
   const fg = textOn(card.value);
+  const format = card.format ?? "hex";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg">
+    <div className="flex h-full flex-col overflow-hidden rounded-md">
       {/* swatch — double-click opens the native picker */}
       <div
         className="relative min-h-0 flex-1"
@@ -117,20 +149,31 @@ export function ColorCardView({ card }: { card: ColorCard }) {
         }}
         title="Double-click to pick a color"
       >
-        <input
-          value={hexDraft ?? card.value.toUpperCase()}
-          onFocus={() => setHexDraft(card.value.toUpperCase())}
-          onChange={(e) => setHexDraft(e.target.value)}
-          onBlur={commitHex}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            if (e.key === "Escape") setHexDraft(null);
-          }}
-          aria-label="Hex color value"
-          spellCheck={false}
-          className="absolute top-2.5 left-3 w-24 bg-transparent font-mono text-sm font-semibold tracking-wide outline-none"
-          style={{ color: fg }}
-        />
+        {/* value label per display format; only hex is directly editable */}
+        {format === "hex" ? (
+          <input
+            value={hexDraft ?? card.value.toUpperCase()}
+            onFocus={() => setHexDraft(card.value.toUpperCase())}
+            onChange={(e) => setHexDraft(e.target.value)}
+            onBlur={commitHex}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") setHexDraft(null);
+            }}
+            aria-label="Hex color value"
+            spellCheck={false}
+            className="absolute top-2.5 left-3 w-24 bg-transparent font-mono text-sm font-semibold tracking-wide outline-none"
+            style={{ color: fg }}
+          />
+        ) : format !== "off" ? (
+          <span
+            aria-label="Color value"
+            className="absolute top-2.5 left-3 font-mono text-sm font-semibold tracking-wide"
+            style={{ color: fg }}
+          >
+            {formatValue(card.value, format)}
+          </span>
+        ) : null}
         {/* hidden native color picker — opened by double-clicking the swatch */}
         <input
           ref={pickerRef}
@@ -153,5 +196,28 @@ export function ColorCardView({ card }: { card: ColorCard }) {
         className="placeholder:text-muted-foreground/80 bg-card w-full px-3 py-2 text-sm outline-none"
       />
     </div>
+  );
+}
+
+// Right-click settings: how the value label displays on the swatch.
+export function ColorMenuItems({ card }: { card: ColorCard }) {
+  const { updateCard } = useBoard();
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>Value format</ContextMenuSubTrigger>
+      <ContextMenuSubContent className="w-28">
+        <ContextMenuRadioGroup
+          value={card.format ?? "hex"}
+          onValueChange={(v) =>
+            updateCard(card.id, { format: v as ColorFormat })
+          }
+        >
+          <ContextMenuRadioItem value="hex">HEX</ContextMenuRadioItem>
+          <ContextMenuRadioItem value="rgb">RGB</ContextMenuRadioItem>
+          <ContextMenuRadioItem value="hsl">HSL</ContextMenuRadioItem>
+          <ContextMenuRadioItem value="off">Off</ContextMenuRadioItem>
+        </ContextMenuRadioGroup>
+      </ContextMenuSubContent>
+    </ContextMenuSub>
   );
 }

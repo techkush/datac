@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useBoard } from "../store";
+import { useCardEditing } from "../card-edit-context";
 import type { BoardLinkCard } from "@/lib/datac/board-types";
 
 // A card that opens a child board. A fresh card has no boardId yet and shows
@@ -20,17 +21,24 @@ import type { BoardLinkCard } from "@/lib/datac/board-types";
 export function BoardCardView({ card }: { card: BoardLinkCard }) {
   const { ws, boards, updateCard } = useBoard();
   const router = useRouter();
+  const edit = useCardEditing();
   const summary = boards.find((b) => b.id === card.boardId);
+
+  // Shell double-click navigates into the board (content is inert).
+  React.useEffect(() => {
+    if (!edit || !card.boardId) return;
+    edit.openRef.current = () => router.push(`/w/${ws}/board/${card.boardId}`);
+    return () => {
+      edit.openRef.current = null;
+    };
+  }, [edit, card.boardId, router, ws]);
 
   if (!card.boardId) {
     return <BoardPicker card={card} />;
   }
 
   return (
-    <div
-      className="group flex cursor-pointer items-center gap-2.5 p-3"
-      onDoubleClick={() => router.push(`/w/${ws}/board/${card.boardId}`)}
-    >
+    <div className="group flex cursor-pointer items-center gap-2.5 p-3">
       <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-md">
         <LayoutDashboard className="size-4" />
       </span>
@@ -50,7 +58,7 @@ export function BoardCardView({ card }: { card: BoardLinkCard }) {
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground hover:text-foreground size-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+          className="text-muted-foreground hover:text-foreground pointer-events-auto size-7 shrink-0"
           aria-label={`Open ${summary.name}`}
           onClick={() => router.push(`/w/${ws}/board/${card.boardId}`)}
         >
@@ -62,7 +70,7 @@ export function BoardCardView({ card }: { card: BoardLinkCard }) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 shrink-0 text-xs"
+          className="pointer-events-auto h-7 shrink-0 text-xs"
           onClick={() => updateCard(card.id, { boardId: "" })}
         >
           Relink

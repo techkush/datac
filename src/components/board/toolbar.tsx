@@ -3,6 +3,8 @@
 import * as React from "react";
 import {
   Columns2,
+  FileText,
+  Heading1,
   Image as ImageIcon,
   LayoutDashboard,
   Link2,
@@ -26,6 +28,7 @@ import { newCard, CARD_SIZES } from "./new-card";
 const TOOLS: { type: BoardCardType; label: string; icon: React.ElementType }[] =
   [
     { type: "note", label: "Note", icon: StickyNote },
+    { type: "heading", label: "Heading", icon: Heading1 },
     { type: "image", label: "Image", icon: ImageIcon },
     { type: "link", label: "Link", icon: Link2 },
     { type: "todo", label: "To-do list", icon: ListTodo },
@@ -33,6 +36,7 @@ const TOOLS: { type: BoardCardType; label: string; icon: React.ElementType }[] =
     { type: "column", label: "Column", icon: Columns2 },
     { type: "table", label: "Table", icon: Table2 },
     { type: "color", label: "Color swatch", icon: Palette },
+    { type: "page", label: "Page", icon: FileText },
   ];
 
 export function BoardToolbar() {

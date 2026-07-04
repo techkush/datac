@@ -4,7 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { useBoard } from "./store";
 import { screenToCanvas, zoomAtPoint, type Point } from "./coords";
-import { usePointerDrag } from "./use-drag";
+import { boardOverlayOpen, usePointerDrag } from "./use-drag";
 import { newCard } from "./new-card";
 import { readAsDataURL } from "@/lib/datac/upload";
 import type { BoardCardType, Camera } from "@/lib/datac/board-types";
@@ -18,6 +18,7 @@ import { CardShell } from "./card-shell";
 
 const ADDABLE: { type: BoardCardType; label: string }[] = [
   { type: "note", label: "Note" },
+  { type: "heading", label: "Heading" },
   { type: "image", label: "Image" },
   { type: "link", label: "Link" },
   { type: "todo", label: "To-do list" },
@@ -25,6 +26,7 @@ const ADDABLE: { type: BoardCardType; label: string }[] = [
   { type: "column", label: "Column" },
   { type: "table", label: "Table" },
   { type: "color", label: "Color swatch" },
+  { type: "page", label: "Page" },
 ];
 
 const GRID = 24; // dot spacing at zoom 1
@@ -55,6 +57,11 @@ export function BoardCanvas() {
     client,
     saveNow,
     drawMode,
+    guides,
+    cutCards,
+    copyCards,
+    pasteCards,
+    hasClipboard,
   } = useBoard();
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -88,6 +95,7 @@ export function BoardCanvas() {
     const el = viewportRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      if (boardOverlayOpen()) return; // reading panel / lightbox up
       e.preventDefault();
       const cam = cameraRef.current;
       if (e.ctrlKey || e.metaKey) {
@@ -106,6 +114,7 @@ export function BoardCanvas() {
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (drawModeRef.current) return; // draw mode owns the keyboard
+      if (boardOverlayOpen()) return; // reading panel / lightbox open
       if (isEditableTarget(e.target)) return;
       if (e.code === "Space") {
         setSpaceHeld(true);
@@ -124,6 +133,15 @@ export function BoardCanvas() {
         e.preventDefault();
       } else if (mod && e.key.toLowerCase() === "d" && sel.length) {
         duplicateCards(sel);
+        e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === "x" && sel.length) {
+        cutCards(sel);
+        e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === "c" && sel.length) {
+        copyCards(sel);
+        e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === "v" && hasClipboard()) {
+        pasteCards();
         e.preventDefault();
       } else if (mod && e.key === "0") {
         const r = viewportRef.current?.getBoundingClientRect();
@@ -144,7 +162,7 @@ export function BoardCanvas() {
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
         const batch: Record<string, { x: number; y: number }> = {};
         for (const c of cardsRef.current)
-          if (selectionRef.current.has(c.id) && !c.columnId)
+          if (selectionRef.current.has(c.id) && !c.locked)
             batch[c.id] = { x: c.x + dx, y: c.y + dy };
         updateCards(batch);
         e.preventDefault();
@@ -159,7 +177,7 @@ export function BoardCanvas() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [removeCards, duplicateCards, setSelection, setCamera, saveNow, updateCards]);
+  }, [removeCards, duplicateCards, setSelection, setCamera, saveNow, updateCards, cutCards, copyCards, pasteCards, hasClipboard]);
 
   /* ---- background drag: pan (space/middle) or marquee -------------------- */
   const panState = React.useRef<Camera>(camera);
@@ -201,6 +219,7 @@ export function BoardCanvas() {
 
   const onBackgroundDown = usePointerDrag({
     onStart: (e) => {
+      if (boardOverlayOpen()) return false;
       // only presses on the empty canvas itself, not on a card
       if ((e.target as HTMLElement).closest("[data-card-id]")) return false;
       if (spaceHeld) {
@@ -236,6 +255,7 @@ export function BoardCanvas() {
   const onMiddleDown = usePointerDrag({
     button: 1,
     onStart: () => {
+      if (boardOverlayOpen()) return false;
       beginPan();
     },
     onMove: (_e, d) => movePan(d),
@@ -286,11 +306,7 @@ export function BoardCanvas() {
 
   /* ---- render ------------------------------------------------------------ */
   const sorted = React.useMemo(
-    () =>
-      cards
-        .filter((c) => !c.columnId)
-        .slice()
-        .sort((a, b) => a.z - b.z),
+    () => cards.slice().sort((a, b) => a.z - b.z),
     [cards],
   );
 
@@ -344,6 +360,30 @@ export function BoardCanvas() {
         {sorted.map((c) => (
           <CardShell key={c.id} card={c} />
         ))}
+
+        {/* smart alignment guides (1px on screen at any zoom) */}
+        {guides?.v && (
+          <div
+            className="pointer-events-none absolute z-[9999] bg-rose-500"
+            style={{
+              left: guides.v.x,
+              top: guides.v.y0 - 8,
+              width: 1 / camera.zoom,
+              height: guides.v.y1 - guides.v.y0 + 16,
+            }}
+          />
+        )}
+        {guides?.h && (
+          <div
+            className="pointer-events-none absolute z-[9999] bg-rose-500"
+            style={{
+              left: guides.h.x0 - 8,
+              top: guides.h.y,
+              width: guides.h.x1 - guides.h.x0 + 16,
+              height: 1 / camera.zoom,
+            }}
+          />
+        )}
       </div>
 
       {/* marquee overlay (screen space) */}

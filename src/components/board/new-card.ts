@@ -13,6 +13,8 @@ export const CARD_SIZES: Record<BoardCardType, { w: number; h?: number }> = {
   table: { w: 460 },
   sketch: { w: 320, h: 240 },
   color: { w: 180, h: 200 },
+  heading: { w: 320 },
+  page: { w: 260 },
 };
 
 // A new card of `type` centered-ish at `at` (canvas coords). Cards that need
@@ -52,7 +54,7 @@ export function newCard(
     case "board":
       return { ...base, type, boardId: "", ...extra } as Omit<BoardCard, "z">;
     case "column":
-      return { ...base, type, title: "", children: [], ...extra } as Omit<
+      return { ...base, type, title: "", html: "", ...extra } as Omit<
         BoardCard,
         "z"
       >;
@@ -75,5 +77,12 @@ export function newCard(
         BoardCard,
         "z"
       >;
+    case "heading":
+      return { ...base, type, text: "", level: 2 as const, ...extra } as Omit<
+        BoardCard,
+        "z"
+      >;
+    case "page":
+      return { ...base, type, pageId: "", ...extra } as Omit<BoardCard, "z">;
   }
 }

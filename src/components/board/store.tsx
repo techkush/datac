@@ -14,6 +14,12 @@ import { DEFAULT_CAMERA } from "@/lib/datac/board-types";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
+// Smart alignment guides shown while dragging (canvas coords, ephemeral).
+export interface AlignGuides {
+  v?: { x: number; y0: number; y1: number };
+  h?: { y: number; x0: number; x1: number };
+}
+
 interface BoardContextValue {
   client: DatacClient;
   ws: string;
@@ -30,16 +36,23 @@ interface BoardContextValue {
   drawMode: { editId?: string } | null;
   openDraw: (editId?: string) => void;
   closeDraw: () => void;
+  // Alignment guides while dragging (never persisted, never queues a save).
+  guides: AlignGuides | null;
+  setGuides: (g: AlignGuides | null) => void;
 
   addCard: (card: Omit<BoardCard, "z">) => void;
+  // true for the card added most recently — such cards mount in edit mode
+  isFreshCard: (id: string) => boolean;
   updateCard: (id: string, patch: Partial<BoardCard>) => void;
   updateCards: (batch: Record<string, Partial<BoardCard>>) => void;
   removeCards: (ids: string[]) => void;
   duplicateCards: (ids: string[]) => void;
+  copyCards: (ids: string[]) => void;
+  cutCards: (ids: string[]) => void;
+  pasteCards: () => void;
+  hasClipboard: () => boolean;
   bringToFront: (ids: string[]) => void;
   sendToBack: (ids: string[]) => void;
-  dockCard: (cardId: string, columnId: string, index: number) => void;
-  undockCard: (cardId: string, x: number, y: number) => void;
   setCamera: (cam: Camera) => void;
   setSelection: (sel: Set<string>) => void;
   renameBoard: (name: string) => void;
@@ -59,6 +72,10 @@ export function useBoard(): BoardContextValue {
 
 const nextZ = (cards: BoardCard[]) =>
   cards.reduce((m, c) => Math.max(m, c.z), -1) + 1;
+
+// Card clipboard for cut/copy/paste — module level so it survives across
+// boards within the session (paste into another board works).
+let cardClipboard: BoardCard[] = [];
 
 export function BoardProvider({
   ws,
@@ -87,6 +104,7 @@ export function BoardProvider({
   const [drawMode, setDrawMode] = React.useState<{ editId?: string } | null>(
     null,
   );
+  const [guides, setGuides] = React.useState<AlignGuides | null>(null);
 
   // Live refs so the debounced save always reads the latest values.
   const cardsRef = React.useRef(cards);
@@ -151,12 +169,20 @@ export function BoardProvider({
     [queueSave],
   );
 
+  const lastAddedRef = React.useRef<string | null>(null);
+
   const addCard = React.useCallback(
     (card: Omit<BoardCard, "z">) => {
+      lastAddedRef.current = card.id;
       mutateCards((cs) => [...cs, { ...card, z: nextZ(cs) } as BoardCard]);
       setSelectionState(new Set([card.id]));
     },
     [mutateCards],
+  );
+
+  const isFreshCard = React.useCallback(
+    (id: string) => lastAddedRef.current === id,
+    [],
   );
 
   const updateCard = React.useCallback(
@@ -182,21 +208,7 @@ export function BoardProvider({
   const removeCards = React.useCallback(
     (ids: string[]) => {
       const gone = new Set(ids);
-      // deleting a column also frees (not deletes) its docked cards
-      mutateCards((cs) =>
-        cs
-          .filter((c) => !gone.has(c.id))
-          .map((c) => {
-            if (c.columnId && gone.has(c.columnId)) {
-              const { columnId, ...rest } = c;
-              void columnId;
-              return rest as BoardCard;
-            }
-            if (c.type === "column")
-              return { ...c, children: c.children.filter((k) => !gone.has(k)) };
-            return c;
-          }),
-      );
+      mutateCards((cs) => cs.filter((c) => !gone.has(c.id)));
       setSelectionState((sel) => {
         const next = new Set(sel);
         ids.forEach((id) => next.delete(id));
@@ -206,50 +218,25 @@ export function BoardProvider({
     [mutateCards],
   );
 
+  // Clones are built OUTSIDE the state updater: updaters must stay pure —
+  // StrictMode double-invokes them in dev, so any side effect (pushing to a
+  // shared array, advancing the clipboard) would double the pasted cards.
   const duplicateCards = React.useCallback(
     (ids: string[]) => {
       const wanted = new Set(ids);
-      const created: BoardCard[] = [];
-      mutateCards((cs) => {
-        let z = nextZ(cs);
-        const byId = new Map(cs.map((c) => [c.id, c]));
-        for (const c of cs) {
-          if (!wanted.has(c.id)) continue;
-          // a docked card duplicates as a free card next to its column
-          const anchor =
-            c.columnId && byId.get(c.columnId) ? byId.get(c.columnId)! : c;
-          if (c.type === "column") {
-            // clone the column together with its docked children
-            const kidClones = c.children
-              .map((k) => byId.get(k))
-              .filter((k): k is BoardCard => !!k)
-              .map((k) => ({ ...structuredClone(k), id: randomId(), z: z++ }));
-            const col = {
-              ...structuredClone(c),
-              id: randomId(),
-              x: c.x + 24,
-              y: c.y + 24,
-              z: z++,
-              children: kidClones.map((k) => k.id),
-            };
-            kidClones.forEach((k) => (k.columnId = col.id));
-            created.push(...kidClones, col);
-          } else {
-            const clone = {
-              ...structuredClone(c),
-              id: randomId(),
-              x: anchor.x + 24,
-              y: anchor.y + 24,
-              z: z++,
-            };
-            delete clone.columnId;
-            created.push(clone);
-          }
-        }
-        return [...cs, ...created];
-      });
-      if (created.length)
-        setSelectionState(new Set(created.map((c) => c.id)));
+      let z = nextZ(cardsRef.current);
+      const created: BoardCard[] = cardsRef.current
+        .filter((c) => wanted.has(c.id))
+        .map((c) => ({
+          ...structuredClone(c),
+          id: randomId(),
+          x: c.x + 24,
+          y: c.y + 24,
+          z: z++,
+        }));
+      if (!created.length) return;
+      mutateCards((cs) => [...cs, ...created]);
+      setSelectionState(new Set(created.map((c) => c.id)));
     },
     [mutateCards],
   );
@@ -276,40 +263,40 @@ export function BoardProvider({
     [mutateCards],
   );
 
-  const dockCard = React.useCallback(
-    (cardId: string, columnId: string, index: number) => {
-      mutateCards((cs) =>
-        cs.map((c) => {
-          if (c.id === cardId) return { ...c, columnId } as BoardCard;
-          if (c.type !== "column") return c;
-          const children = c.children.filter((k) => k !== cardId);
-          if (c.id === columnId)
-            children.splice(Math.max(0, Math.min(index, children.length)), 0, cardId);
-          return { ...c, children };
-        }),
-      );
+  /* ---- clipboard ---------------------------------------------------------- */
+
+  const copyCards = React.useCallback((ids: string[]) => {
+    const wanted = new Set(ids);
+    cardClipboard = cardsRef.current
+      .filter((c) => wanted.has(c.id))
+      .map((c) => structuredClone(c));
+  }, []);
+
+  const cutCards = React.useCallback(
+    (ids: string[]) => {
+      copyCards(ids);
+      removeCards(ids);
     },
-    [mutateCards],
+    [copyCards, removeCards],
   );
 
-  const undockCard = React.useCallback(
-    (cardId: string, x: number, y: number) => {
-      mutateCards((cs) => {
-        const z = nextZ(cs);
-        return cs.map((c) => {
-          if (c.id === cardId) {
-            const { columnId, ...rest } = c;
-            void columnId;
-            return { ...rest, x, y, z } as BoardCard;
-          }
-          if (c.type === "column" && c.children.includes(cardId))
-            return { ...c, children: c.children.filter((k) => k !== cardId) };
-          return c;
-        });
-      });
-    },
-    [mutateCards],
-  );
+  const pasteCards = React.useCallback(() => {
+    if (!cardClipboard.length) return;
+    let z = nextZ(cardsRef.current);
+    const created: BoardCard[] = cardClipboard.map((c) => ({
+      ...structuredClone(c),
+      id: randomId(),
+      x: c.x + 24,
+      y: c.y + 24,
+      z: z++,
+    }));
+    mutateCards((cs) => [...cs, ...created]);
+    // repeated pastes land in a cascade instead of stacking exactly
+    cardClipboard = cardClipboard.map((c) => ({ ...c, x: c.x + 24, y: c.y + 24 }));
+    setSelectionState(new Set(created.map((c) => c.id)));
+  }, [mutateCards]);
+
+  const hasClipboard = React.useCallback(() => cardClipboard.length > 0, []);
 
   /* ---- camera / meta ----------------------------------------------------- */
 
@@ -407,15 +394,20 @@ export function BoardProvider({
     drawMode,
     openDraw,
     closeDraw,
+    guides,
+    setGuides,
     addCard,
+    isFreshCard,
     updateCard,
     updateCards,
     removeCards,
     duplicateCards,
+    copyCards,
+    cutCards,
+    pasteCards,
+    hasClipboard,
     bringToFront,
     sendToBack,
-    dockCard,
-    undockCard,
     setCamera,
     setSelection,
     renameBoard,

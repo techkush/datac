@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, Link2, Pencil } from "lucide-react";
+import { ExternalLink, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBoard } from "../store";
+import { useCardEditing } from "../card-edit-context";
 import type { LinkCard } from "@/lib/datac/board-types";
 
 const hostname = (url: string) => {
@@ -15,21 +16,32 @@ const hostname = (url: string) => {
   }
 };
 
+// Double-click (shell edit mode) opens the form; the external-link button
+// stays live outside edit mode so links open with a single click.
 export function LinkCardView({ card }: { card: LinkCard }) {
   const { updateCard } = useBoard();
-  // A freshly added link card has no URL yet — open straight into the form.
-  const [editing, setEditing] = React.useState(!card.url);
+  const edit = useCardEditing();
+  const editing = (edit?.editing ?? false) || !card.url;
   const [title, setTitle] = React.useState(card.title);
   const [url, setUrl] = React.useState(card.url);
   const [iconOk, setIconOk] = React.useState(true);
+
+  // Re-seed the form each time edit mode opens.
+  React.useEffect(() => {
+    if (editing) {
+      setTitle(card.title);
+      setUrl(card.url);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 
   function commit() {
     const u = url.trim();
     if (!u) return;
     const full = /^[a-z]+:\/\//i.test(u) ? u : `https://${u}`;
     updateCard(card.id, { url: full, title: title.trim() || hostname(full) });
-    setEditing(false);
     setIconOk(true);
+    edit?.setEditing(false);
   }
 
   if (editing) {
@@ -40,7 +52,6 @@ export function LinkCardView({ card }: { card: LinkCard }) {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Title"
           className="h-8 text-sm"
-          autoFocus
         />
         <Input
           value={url}
@@ -49,7 +60,7 @@ export function LinkCardView({ card }: { card: LinkCard }) {
           className="h-8 text-sm"
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
-            if (e.key === "Escape" && card.url) setEditing(false);
+            if (e.key === "Escape" && card.url) edit?.setEditing(false);
           }}
         />
         <Button size="sm" className="h-7" disabled={!url.trim()} onClick={commit}>
@@ -60,7 +71,7 @@ export function LinkCardView({ card }: { card: LinkCard }) {
   }
 
   return (
-    <div className="group flex items-center gap-2.5 p-3">
+    <div className="flex items-center gap-2.5 p-3">
       {iconOk ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -79,32 +90,17 @@ export function LinkCardView({ card }: { card: LinkCard }) {
           {hostname(card.url)}
         </span>
       </div>
-      <div className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-foreground size-7"
-          aria-label="Edit link"
-          onClick={() => {
-            setTitle(card.title);
-            setUrl(card.url);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-foreground size-7"
-          aria-label="Open link in a new tab"
-          asChild
-        >
-          <a href={card.url} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="size-3.5" />
-          </a>
-        </Button>
-      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-muted-foreground hover:text-foreground pointer-events-auto size-7 shrink-0"
+        aria-label="Open link in a new tab"
+        asChild
+      >
+        <a href={card.url} target="_blank" rel="noopener noreferrer">
+          <ExternalLink className="size-3.5" />
+        </a>
+      </Button>
     </div>
   );
 }

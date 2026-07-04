@@ -50,7 +50,9 @@ export function TodoCardView({ card }: { card: TodoCard }) {
       <ul className="flex flex-col gap-1">
         {card.items.map((item, i) => (
           <li key={item.id} className="flex items-center gap-2">
+            {/* ticking off stays a single click, outside edit mode */}
             <Checkbox
+              className="pointer-events-auto"
               checked={item.done}
               onCheckedChange={(v) =>
                 setItems(

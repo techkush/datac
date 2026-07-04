@@ -23,6 +23,7 @@ interface CardBase {
   z: number; // stacking order, renumbered 0..n-1 on save
   columnId?: string; // set while docked inside a ColumnCard
   color?: string; // optional tint (a WORKSPACE_COLORS value)
+  locked?: boolean; // position locked: card can't be dragged or resized
 }
 
 export interface NoteCard extends CardBase {
@@ -36,6 +37,12 @@ export interface ImageCard extends CardBase {
   caption?: string;
   natW?: number; // natural pixel size, for aspect-locked resize
   natH?: number;
+  // Annotations drawn on the image in the lightbox. Points live in the
+  // annW×annH space (the displayed image size when drawn) and stretch with
+  // the image wherever it renders.
+  strokes?: SketchStroke[];
+  annW?: number;
+  annH?: number;
 }
 
 export interface LinkCard extends CardBase {
@@ -64,13 +71,16 @@ export interface BoardLinkCard extends CardBase {
   boardId: string;
 }
 
-// Milanote-style column container. `children` (ordered docked card ids) is
-// the source of truth for order; each docked card's `columnId` is the
-// reverse pointer — reconciled on load, `children` wins.
+// A collapsible section: centered headline with an expand/collapse toggle,
+// and a note body (same editing behavior as NoteCard) shown when expanded.
+// `children` is a legacy field from the old card-docking design — loaders
+// free any still-docked cards and leave it empty.
 export interface ColumnCard extends CardBase {
   type: "column";
   title: string;
-  children: string[];
+  html?: string;
+  collapsed?: boolean;
+  children?: string[];
 }
 
 export type CellKind = "text" | "number" | "date" | "currency" | "checkbox";
@@ -98,10 +108,29 @@ export interface TableCard extends CardBase {
 
 // A color swatch for moodboards/palettes: the hex value fills the card with
 // an editable name row below.
+export type ColorFormat = "hex" | "rgb" | "hsl" | "off";
+
 export interface ColorCard extends CardBase {
   type: "color";
   value: string; // #rrggbb
   name?: string; // empty = show the auto-derived name
+  format?: ColorFormat; // value label display, default "hex"; "off" hides it
+}
+
+// A standalone heading (H1–H6) for structuring board regions.
+export interface HeadingCard extends CardBase {
+  type: "heading";
+  text: string;
+  level: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
+// A link to a document page in this workspace: double-click opens a
+// right-side reading panel.
+export interface PageCard extends CardBase {
+  type: "page";
+  pageId: string;
+  title?: string; // snapshot for display; refreshed when the panel opens
+  icon?: string;
 }
 
 export interface SketchStroke {
@@ -128,7 +157,9 @@ export type BoardCard =
   | ColumnCard
   | TableCard
   | SketchCard
-  | ColorCard;
+  | ColorCard
+  | HeadingCard
+  | PageCard;
 
 export type BoardCardType = BoardCard["type"];
 

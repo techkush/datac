@@ -10,6 +10,14 @@ export interface DragDelta {
 
 const CLICK_SLOP = 3; // px before a press counts as a drag, not a click
 
+// True while a blocking overlay (page reading panel, image lightbox) is up —
+// every board interaction must refuse to start, regardless of whether the
+// overlay's own event blocking holds.
+export const boardOverlayOpen = () =>
+  !!document.querySelector(
+    '[data-slot="sheet-content"][data-state="open"], [data-lightbox]',
+  );
+
 // Window-listener drag: returns a pointerdown handler. Screen-space deltas
 // are reported to onMove/onEnd; callers convert to canvas units (÷ zoom).
 // Deliberately NO setPointerCapture — capture retargets click/dblclick to
