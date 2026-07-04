@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Download } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, Download, LayoutDashboard, Plus } from "lucide-react";
+import { toast } from "sonner";
+import type { BoardSummary } from "@/lib/datac/board-types";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -35,6 +38,67 @@ function SaveStatus({ state }: { state: string }) {
     >
       {label}
     </span>
+  );
+}
+
+// Quick access to this workspace's visual boards: list (fetched lazily when
+// the menu opens) plus "New board", which creates and navigates straight in.
+function BoardsMenu() {
+  const { client } = useEditor();
+  const router = useRouter();
+  const [boards, setBoards] = React.useState<BoardSummary[] | null>(null);
+
+  async function load(open: boolean) {
+    if (!open) return;
+    try {
+      setBoards(await client.listBoards());
+    } catch {
+      setBoards([]);
+    }
+  }
+
+  async function newBoard() {
+    try {
+      const created = await client.createBoard({ name: "Untitled board" });
+      router.push(`/w/${client.ws}/board/${created.id}`);
+    } catch {
+      toast.error("Could not create board");
+    }
+  }
+
+  return (
+    <DropdownMenu onOpenChange={load}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7"
+          title="Visual boards"
+        >
+          <LayoutDashboard className="size-4" /> Boards
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {boards === null ? (
+          <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+        ) : (
+          boards
+            .filter((b) => !b.parent)
+            .map((b) => (
+              <DropdownMenuItem
+                key={b.id}
+                onClick={() => router.push(`/w/${client.ws}/board/${b.id}`)}
+              >
+                <LayoutDashboard className="size-4" />
+                <span className="truncate">{b.name}</span>
+              </DropdownMenuItem>
+            ))
+        )}
+        <DropdownMenuItem onClick={newBoard}>
+          <Plus className="size-4" /> New board
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -80,6 +144,7 @@ export function Topbar() {
       </nav>
 
       <div className="flex items-center gap-2">
+        <BoardsMenu />
         {currentId && (
           <>
             <DropdownMenu>
