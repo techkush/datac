@@ -88,20 +88,37 @@ function borderClip(b: Box, target: Pt): Pt {
   return { x: c.x + dx * s, y: c.y + dy * s };
 }
 
-// Which side of the box a border point sits on (for elbow departure).
-function clipSide(b: Box, p: Pt): ArrowSide {
-  const dTop = Math.abs(p.y - b.y);
-  const dBottom = Math.abs(p.y - (b.y + b.h));
-  const dLeft = Math.abs(p.x - b.x);
-  const dRight = Math.abs(p.x - (b.x + b.w));
-  const m = Math.min(dTop, dBottom, dLeft, dRight);
-  return m === dTop
-    ? "top"
-    : m === dBottom
-      ? "bottom"
-      : m === dLeft
-        ? "left"
-        : "right";
+// Round-style anchors: the elbow follows the CENTER AXES — it departs
+// along the source center's dominant axis toward the target and arrives
+// along the perpendicular one, so both endpoints sit on the middle of the
+// facing edges (predictable, no corner-adjacent exits).
+function elbowAnchors(
+  A: Box,
+  B: Box,
+): { p1: Pt; s1: ArrowSide; p2: Pt; s2: ArrowSide } {
+  const cA = center(A);
+  const cB = center(B);
+  const dx = cB.x - cA.x;
+  const dy = cB.y - cA.y;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    const s1: ArrowSide = dy >= 0 ? "bottom" : "top";
+    const p1 = { x: cA.x, y: dy >= 0 ? A.y + A.h : A.y };
+    if (Math.abs(dx) < 1) {
+      // vertically aligned: straight drop, arrive vertically too
+      const s2: ArrowSide = dy >= 0 ? "top" : "bottom";
+      return { p1, s1, p2: { x: cB.x, y: dy >= 0 ? B.y : B.y + B.h }, s2 };
+    }
+    const s2: ArrowSide = dx >= 0 ? "left" : "right";
+    return { p1, s1, p2: { x: dx >= 0 ? B.x : B.x + B.w, y: cB.y }, s2 };
+  }
+  const s1: ArrowSide = dx >= 0 ? "right" : "left";
+  const p1 = { x: dx >= 0 ? A.x + A.w : A.x, y: cA.y };
+  if (Math.abs(dy) < 1) {
+    const s2: ArrowSide = dx >= 0 ? "left" : "right";
+    return { p1, s1, p2: { x: dx >= 0 ? B.x : B.x + B.w, y: cB.y }, s2 };
+  }
+  const s2: ArrowSide = dy >= 0 ? "top" : "bottom";
+  return { p1, s1, p2: { x: cB.x, y: dy >= 0 ? B.y : B.y + B.h }, s2 };
 }
 
 /* ---- orthogonal (round) routing ------------------------------------------ */
@@ -316,12 +333,8 @@ function arrowGeom(a: BoardArrow, A: Box, B: Box, gap: number): ArrowGeom {
   // straight center-to-center by default; legacy "curved" renders as sharp
   const line: ArrowLine = a.line === "round" ? "round" : "sharp";
   if (line === "round") {
-    // center-anchored like sharp: the elbow departs from where the
-    // center-to-center line exits each card's border
-    const rawStart = borderClip(A, center(B));
-    const rawEnd = borderClip(B, center(A));
-    const s1 = clipSide(A, rawStart);
-    const s2 = clipSide(B, rawEnd);
+    // center-anchored: departs/arrives along the cards' center axes
+    const { p1: rawStart, s1, p2: rawEnd, s2 } = elbowAnchors(A, B);
     const pts = elbowPoints(rawStart, s1, rawEnd, s2, a.bend, a.bend2);
     const n = pts.length;
     pts[n - 1] = nudge(rawEnd, pts[n - 2], gap);
