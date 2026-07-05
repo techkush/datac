@@ -2,6 +2,18 @@
 
 import * as React from "react";
 import {
+  ArrowLeftRight,
+  CornerRightUp,
+  Minus,
+  Palette,
+  Rainbow,
+  RotateCcw,
+  Ruler,
+  SquareDashed,
+  Tag,
+  Trash2,
+} from "lucide-react";
+import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
@@ -631,13 +643,18 @@ export function ArrowsLayer() {
                   )}
                 </g>
               </ContextMenuTrigger>
-              <ContextMenuContent className="w-52">
+              <ContextMenuContent className="w-44">
                 <ContextMenuItem onClick={() => setLabelEdit(a)}>
-                  {a.label ? "Edit label…" : "Add label…"}
+                  <Tag className="size-4" />
+                  {a.label ? "Edit label…" : "Label…"}
                 </ContextMenuItem>
+                <ContextMenuSeparator />
                 <ContextMenuSub>
-                  <ContextMenuSubTrigger>Line</ContextMenuSubTrigger>
-                  <ContextMenuSubContent className="w-28">
+                  <ContextMenuSubTrigger>
+                    <CornerRightUp className="text-muted-foreground mr-1.5 size-4" />
+                    Shape
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="w-32">
                     <ContextMenuRadioGroup
                       value={line}
                       onValueChange={(v) =>
@@ -650,16 +667,19 @@ export function ArrowsLayer() {
                       }
                     >
                       <ContextMenuRadioItem value="sharp">
-                        Sharp
+                        <Minus className="size-4" /> Straight
                       </ContextMenuRadioItem>
                       <ContextMenuRadioItem value="round">
-                        Round
+                        <CornerRightUp className="size-4" /> Elbow
                       </ContextMenuRadioItem>
                     </ContextMenuRadioGroup>
                   </ContextMenuSubContent>
                 </ContextMenuSub>
                 <ContextMenuSub>
-                  <ContextMenuSubTrigger>Line size</ContextMenuSubTrigger>
+                  <ContextMenuSubTrigger>
+                    <Ruler className="text-muted-foreground mr-1.5 size-4" />
+                    Size
+                  </ContextMenuSubTrigger>
                   <ContextMenuSubContent className="w-28">
                     <ContextMenuRadioGroup
                       value={String(width)}
@@ -670,17 +690,19 @@ export function ArrowsLayer() {
                       {ARROW_WIDTHS.map((w) => (
                         <ContextMenuRadioItem key={w} value={String(w)}>
                           <span
-                            className="bg-foreground w-8 rounded"
+                            className="bg-foreground w-10 rounded"
                             style={{ height: w }}
                           />
-                          {w}
                         </ContextMenuRadioItem>
                       ))}
                     </ContextMenuRadioGroup>
                   </ContextMenuSubContent>
                 </ContextMenuSub>
                 <ContextMenuSub>
-                  <ContextMenuSubTrigger>Line type</ContextMenuSubTrigger>
+                  <ContextMenuSubTrigger>
+                    <SquareDashed className="text-muted-foreground mr-1.5 size-4" />
+                    Types
+                  </ContextMenuSubTrigger>
                   <ContextMenuSubContent className="w-32">
                     <ContextMenuRadioGroup
                       value={dash}
@@ -688,24 +710,31 @@ export function ArrowsLayer() {
                         updateArrow(a.id, { dash: v as ArrowDash })
                       }
                     >
-                      <ContextMenuRadioItem value="solid">
-                        Solid
-                      </ContextMenuRadioItem>
-                      {[1, 2, 3, 4].map((n) => (
-                        <ContextMenuRadioItem key={`da${n}`} value={`dashed${n}`}>
-                          Dashed {n}
-                        </ContextMenuRadioItem>
-                      ))}
-                      {[1, 2, 3, 4].map((n) => (
-                        <ContextMenuRadioItem key={`do${n}`} value={`dotted${n}`}>
-                          Dotted {n}
+                      {(Object.keys(DASH_PATTERNS) as ArrowDash[]).map((k) => (
+                        <ContextMenuRadioItem key={k} value={k}>
+                          {/* size-auto: opt out of the menu's svg size-4 rule */}
+                          <svg width="56" height="8" className="size-auto" aria-label={k}>
+                            <line
+                              x1="0"
+                              y1="4"
+                              x2="56"
+                              y2="4"
+                              strokeWidth={2}
+                              strokeDasharray={DASH_PATTERNS[k]}
+                              strokeLinecap={isDotted(k) ? "round" : undefined}
+                              className="stroke-foreground"
+                            />
+                          </svg>
                         </ContextMenuRadioItem>
                       ))}
                     </ContextMenuRadioGroup>
                   </ContextMenuSubContent>
                 </ContextMenuSub>
                 <ContextMenuSub>
-                  <ContextMenuSubTrigger>Line color</ContextMenuSubTrigger>
+                  <ContextMenuSubTrigger>
+                    <Palette className="text-muted-foreground mr-1.5 size-4" />
+                    Color
+                  </ContextMenuSubTrigger>
                   <ContextMenuSubContent className="w-36">
                     <ContextMenuItem
                       onClick={() => updateArrow(a.id, { color: undefined })}
@@ -727,7 +756,10 @@ export function ArrowsLayer() {
                   </ContextMenuSubContent>
                 </ContextMenuSub>
                 <ContextMenuSub>
-                  <ContextMenuSubTrigger>Line jumps</ContextMenuSubTrigger>
+                  <ContextMenuSubTrigger>
+                    <Rainbow className="text-muted-foreground mr-1.5 size-4" />
+                    Jumps
+                  </ContextMenuSubTrigger>
                   <ContextMenuSubContent className="w-28">
                     <ContextMenuRadioGroup
                       value={jump}
@@ -745,13 +777,15 @@ export function ArrowsLayer() {
                     </ContextMenuRadioGroup>
                   </ContextMenuSubContent>
                 </ContextMenuSub>
+                <ContextMenuSeparator />
                 <ContextMenuCheckboxItem
                   checked={!!a.both}
                   onCheckedChange={(v) =>
                     updateArrow(a.id, { both: v === true })
                   }
                 >
-                  Both-side arrows
+                  <ArrowLeftRight className="size-4" />
+                  Both sides
                 </ContextMenuCheckboxItem>
                 {(a.bend !== undefined || a.bend2 !== undefined) && (
                   <ContextMenuItem
@@ -759,6 +793,7 @@ export function ArrowsLayer() {
                       updateArrow(a.id, { bend: undefined, bend2: undefined })
                     }
                   >
+                    <RotateCcw className="size-4" />
                     Reset shape
                   </ContextMenuItem>
                 )}
@@ -767,7 +802,8 @@ export function ArrowsLayer() {
                   variant="destructive"
                   onClick={() => removeArrow(a.id)}
                 >
-                  Delete arrow
+                  <Trash2 className="size-4" />
+                  Delete
                   <span className="text-muted-foreground ml-auto text-xs">
                     ⌫
                   </span>
