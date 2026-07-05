@@ -163,6 +163,48 @@ export type BoardCard =
 
 export type BoardCardType = BoardCard["type"];
 
+/* ---- arrows --------------------------------------------------------------- */
+// A connection between two cards, drawn edge-to-edge and re-anchored live
+// as the cards move.
+export type ArrowLine = "sharp" | "round" | "curved";
+export type ArrowSide = "top" | "right" | "bottom" | "left";
+// Stroke pattern: solid, or dashed/dotted in four escalating scales.
+export type ArrowDash =
+  | "solid"
+  | "dashed1"
+  | "dashed2"
+  | "dashed3"
+  | "dashed4"
+  | "dotted1"
+  | "dotted2"
+  | "dotted3"
+  | "dotted4";
+// How this line indicates hopping OVER other lines at crossings.
+export type ArrowJump = "none" | "gap" | "arc" | "round" | "line";
+
+export interface BoardArrow {
+  id: string;
+  from: string; // card id
+  to: string; // card id
+  // Anchor sides — arrows attach only to the four edge-midpoint connection
+  // points. Absent (legacy): the closest pair is picked automatically.
+  fromSide?: ArrowSide;
+  toSide?: ArrowSide;
+  label?: string; // text shown at the line's midpoint
+  line?: ArrowLine; // routing style, default "sharp" (straight, center-to-center)
+  both?: boolean; // arrowheads on both ends
+  width?: number; // stroke width, default 1.5
+  dash?: ArrowDash; // stroke pattern, default "solid"
+  color?: string; // stroke color, default theme foreground
+  jump?: ArrowJump; // crossing indication, default "none"
+  // Manual elbow adjustment (round lines): canvas position of the middle
+  // segment — y when the route departs vertically, x when horizontally.
+  bend?: number;
+  // Cross-axis detour: displaces the long run sideways (x for vertical
+  // departures, y for horizontal), so a line can route AROUND components.
+  bend2?: number;
+}
+
 /* ---- board files --------------------------------------------------------- */
 // On-disk shape of <dataDir>/boards/<boardId>.json.
 export interface BoardFile {
@@ -172,6 +214,7 @@ export interface BoardFile {
   updated: string; // ISO
   viewport?: Camera; // last camera position, restored on open
   cards: BoardCard[];
+  arrows?: BoardArrow[];
   [key: string]: unknown; // forward-compat, mirrors Workspace
 }
 

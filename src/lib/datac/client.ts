@@ -1,6 +1,7 @@
 // Browser-side API client, scoped to a single workspace (/api/w/<id>).
 import type { Block, DocSummary } from "./types";
 import type {
+  BoardArrow,
   BoardCard,
   BoardFile,
   BoardSummary,
@@ -50,6 +51,7 @@ export interface BoardFields {
   parent?: string;
   viewport?: Camera;
   cards?: BoardCard[];
+  arrows?: BoardArrow[];
 }
 
 export interface BoardSaveResult {

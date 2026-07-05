@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { createClient, type DatacClient } from "@/lib/datac/client";
 import { randomId } from "@/lib/datac/constants";
 import type {
+  ArrowSide,
+  BoardArrow,
   BoardCard,
   BoardFile,
   BoardSummary,
@@ -39,6 +41,28 @@ interface BoardContextValue {
   // Alignment guides while dragging (never persisted, never queues a save).
   guides: AlignGuides | null;
   setGuides: (g: AlignGuides | null) => void;
+  // Card-to-card connection arrows.
+  arrows: BoardArrow[];
+  addArrow: (
+    from: string,
+    to: string,
+    fromSide?: ArrowSide,
+    toSide?: ArrowSide,
+  ) => void;
+  updateArrow: (id: string, patch: Partial<BoardArrow>) => void;
+  removeArrow: (id: string) => void;
+  // Arrow being dragged out of a connection handle (ephemeral).
+  pendingArrow: {
+    from: string;
+    fromSide: ArrowSide;
+    x: number;
+    y: number;
+  } | null;
+  setPendingArrow: (
+    p: { from: string; fromSide: ArrowSide; x: number; y: number } | null,
+  ) => void;
+  selectedArrowId: string | null;
+  setSelectedArrowId: (id: string | null) => void;
 
   addCard: (card: Omit<BoardCard, "z">) => void;
   // true for the card added most recently — such cards mount in edit mode
@@ -105,6 +129,20 @@ export function BoardProvider({
     null,
   );
   const [guides, setGuides] = React.useState<AlignGuides | null>(null);
+  const [arrows, setArrows] = React.useState<BoardArrow[]>(
+    board.arrows || [],
+  );
+  const [pendingArrow, setPendingArrow] = React.useState<{
+    from: string;
+    fromSide: ArrowSide;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectedArrowId, setSelectedArrowId] = React.useState<string | null>(
+    null,
+  );
+  const arrowsRef = React.useRef(arrows);
+  arrowsRef.current = arrows;
 
   // Live refs so the debounced save always reads the latest values.
   const cardsRef = React.useRef(cards);
@@ -132,6 +170,7 @@ export function BoardProvider({
             parent: board.parent,
             viewport: cameraRef.current,
             cards: cardsRef.current,
+            arrows: arrowsRef.current,
           },
           keepalive,
         );
@@ -209,6 +248,14 @@ export function BoardProvider({
     (ids: string[]) => {
       const gone = new Set(ids);
       mutateCards((cs) => cs.filter((c) => !gone.has(c.id)));
+      // arrows can't dangle: drop any touching a removed card
+      const keep = arrowsRef.current.filter(
+        (a) => !gone.has(a.from) && !gone.has(a.to),
+      );
+      if (keep.length !== arrowsRef.current.length) {
+        arrowsRef.current = keep;
+        setArrows(keep);
+      }
       setSelectionState((sel) => {
         const next = new Set(sel);
         ids.forEach((id) => next.delete(id));
@@ -216,6 +263,47 @@ export function BoardProvider({
       });
     },
     [mutateCards],
+  );
+
+  /* ---- arrows -------------------------------------------------------------- */
+
+  const addArrow = React.useCallback(
+    (from: string, to: string, fromSide?: ArrowSide, toSide?: ArrowSide) => {
+      if (from === to) return;
+      if (arrowsRef.current.some((a) => a.from === from && a.to === to))
+        return;
+      const next = [
+        ...arrowsRef.current,
+        { id: randomId(), from, to, fromSide, toSide },
+      ];
+      arrowsRef.current = next;
+      setArrows(next);
+      queueSave();
+    },
+    [queueSave],
+  );
+
+  const updateArrow = React.useCallback(
+    (id: string, patch: Partial<BoardArrow>) => {
+      const next = arrowsRef.current.map((a) =>
+        a.id === id ? { ...a, ...patch } : a,
+      );
+      arrowsRef.current = next;
+      setArrows(next);
+      queueSave();
+    },
+    [queueSave],
+  );
+
+  const removeArrow = React.useCallback(
+    (id: string) => {
+      const next = arrowsRef.current.filter((a) => a.id !== id);
+      arrowsRef.current = next;
+      setArrows(next);
+      setSelectedArrowId((cur) => (cur === id ? null : cur));
+      queueSave();
+    },
+    [queueSave],
   );
 
   // Clones are built OUTSIDE the state updater: updaters must stay pure —
@@ -311,6 +399,7 @@ export function BoardProvider({
 
   const setSelection = React.useCallback((sel: Set<string>) => {
     setSelectionState(sel);
+    setSelectedArrowId(null); // card and arrow selection are exclusive
   }, []);
 
   const renameBoard = React.useCallback(
@@ -396,6 +485,14 @@ export function BoardProvider({
     closeDraw,
     guides,
     setGuides,
+    arrows,
+    addArrow,
+    updateArrow,
+    removeArrow,
+    pendingArrow,
+    setPendingArrow,
+    selectedArrowId,
+    setSelectedArrowId,
     addCard,
     isFreshCard,
     updateCard,

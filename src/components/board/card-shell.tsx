@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/context-menu";
 import { WORKSPACE_COLORS } from "@/lib/datac/colors";
 import { CardEditingContext } from "./card-edit-context";
+import type { ArrowSide } from "@/lib/datac/board-types";
 import { cn } from "@/lib/utils";
 import { useBoard } from "./store";
 import { boardOverlayOpen, usePointerDrag } from "./use-drag";
+import { screenToCanvas } from "./coords";
 import type { BoardCard, BoardCardType } from "@/lib/datac/board-types";
 import { NoteCardView } from "./cards/note-card";
 import { LinkCardView } from "./cards/link-card";
@@ -109,6 +111,8 @@ export function CardShell({ card }: { card: BoardCard }) {
     hasClipboard,
     isFreshCard,
     setGuides,
+    addArrow,
+    setPendingArrow,
   } = useBoard();
   const selected = selection.has(card.id);
   // Context-menu actions apply to the whole selection when the card is in
@@ -121,6 +125,8 @@ export function CardShell({ card }: { card: BoardCard }) {
   cardsRef.current = cards;
   const zoomRef = React.useRef(camera.zoom);
   zoomRef.current = camera.zoom;
+  const cameraRef = React.useRef(camera);
+  cameraRef.current = camera;
   const selectionRef = React.useRef(selection);
   selectionRef.current = selection;
 
@@ -308,6 +314,101 @@ export function CardShell({ card }: { card: BoardCard }) {
     },
   });
 
+  /* ---- connection arrows ---------------------------------------------------
+   * Dragging from an edge handle draws a pending arrow; dropping on another
+   * card creates the connection. */
+  const hitCardAt = (e: PointerEvent): HTMLElement | null => {
+    let best: HTMLElement | null = null;
+    let bestZ = -Infinity;
+    for (const el of document.querySelectorAll<HTMLElement>(
+      "[data-card-id]",
+    )) {
+      if (el.dataset.cardId === card.id) continue;
+      const r = el.getBoundingClientRect();
+      if (
+        e.clientX >= r.left &&
+        e.clientX <= r.right &&
+        e.clientY >= r.top &&
+        e.clientY <= r.bottom
+      ) {
+        const z = Number(el.style.zIndex || 0);
+        if (z > bestZ) {
+          bestZ = z;
+          best = el;
+        }
+      }
+    }
+    return best;
+  };
+  const clearArrowTargets = () =>
+    document
+      .querySelectorAll("[data-arrow-target]")
+      .forEach((el) => el.removeAttribute("data-arrow-target"));
+
+  // The target's connection point closest to the drop position (screen px).
+  const nearestSide = (el: HTMLElement, e: PointerEvent): ArrowSide => {
+    const r = el.getBoundingClientRect();
+    const pts: [ArrowSide, number, number][] = [
+      ["top", r.left + r.width / 2, r.top],
+      ["bottom", r.left + r.width / 2, r.bottom],
+      ["left", r.left, r.top + r.height / 2],
+      ["right", r.right, r.top + r.height / 2],
+    ];
+    let best: ArrowSide = "top";
+    let bestD = Infinity;
+    for (const [side, x, y] of pts) {
+      const d = Math.hypot(e.clientX - x, e.clientY - y);
+      if (d < bestD) {
+        bestD = d;
+        best = side;
+      }
+    }
+    return best;
+  };
+
+  const connectSideRef = React.useRef<ArrowSide>("top");
+  const onConnectDown = usePointerDrag({
+    onStart: () => {
+      if (boardOverlayOpen()) return false;
+    },
+    onMove: (e) => {
+      const vp = document.querySelector("[data-board-viewport]");
+      const r = vp?.getBoundingClientRect();
+      if (!r) return;
+      const p = screenToCanvas(
+        { x: e.clientX - r.left, y: e.clientY - r.top },
+        cameraRef.current,
+      );
+      setPendingArrow({
+        from: card.id,
+        fromSide: connectSideRef.current,
+        x: p.x,
+        y: p.y,
+      });
+      clearArrowTargets();
+      hitCardAt(e)?.setAttribute("data-arrow-target", "1");
+    },
+    onEnd: (e, d) => {
+      clearArrowTargets();
+      setPendingArrow(null);
+      if (!d.moved) return;
+      const target = hitCardAt(e);
+      if (target?.dataset.cardId)
+        addArrow(
+          card.id,
+          target.dataset.cardId,
+          connectSideRef.current,
+          nearestSide(target, e),
+        );
+    },
+  });
+
+  const connectHandle = (side: ArrowSide) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    connectSideRef.current = side;
+    onConnectDown(e);
+  };
+
   /* ---- resize ------------------------------------------------------------ */
   const startSize = React.useRef({ w: card.w, h: card.h ?? 0 });
   const axisRef = React.useRef<"e" | "s" | "se">("se");
@@ -371,6 +472,8 @@ export function CardShell({ card }: { card: BoardCard }) {
               (transparent
                 ? "ring-foreground/50 ring-1"
                 : "ring-foreground ring-1"),
+            // highlighted while a pending arrow hovers over this card
+            "data-[arrow-target]:ring-2 data-[arrow-target]:ring-rose-500",
           )}
           style={{
             left: card.x,
@@ -412,6 +515,31 @@ export function CardShell({ card }: { card: BoardCard }) {
             className="bg-background border-foreground pointer-events-auto absolute -right-1 -bottom-1 size-2.5 cursor-nwse-resize border"
             onPointerDown={resizeHandle("se")}
           />
+        </>
+      )}
+
+      {/* connection points: drag one onto another card to draw an arrow */}
+      {selected && selection.size === 1 && (
+        <>
+          {(
+            [
+              ["-top-1.5 left-1/2 -translate-x-1/2", "top"],
+              ["-bottom-1.5 left-1/2 -translate-x-1/2", "bottom"],
+              ["top-1/2 -left-1.5 -translate-y-1/2", "left"],
+              ["top-1/2 -right-1.5 -translate-y-1/2", "right"],
+            ] as const
+          ).map(([pos, side]) => (
+            <div
+              key={side}
+              role="button"
+              aria-label={`Connect from ${side}`}
+              className={cn(
+                "bg-background pointer-events-auto absolute size-2.5 cursor-crosshair rounded-full border border-rose-500 hover:bg-rose-500",
+                pos,
+              )}
+              onPointerDown={connectHandle(side)}
+            />
+          ))}
         </>
       )}
         </div>

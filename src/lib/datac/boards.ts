@@ -1,7 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { safeId } from "./docs";
-import type { BoardCard, BoardFile, BoardSummary, Camera } from "./board-types";
+import type {
+  BoardArrow,
+  BoardCard,
+  BoardFile,
+  BoardSummary,
+  Camera,
+} from "./board-types";
 
 const fsp = fs.promises;
 
@@ -60,6 +66,23 @@ function reconcileColumns(cards: BoardCard[]): BoardCard[] {
   return cards;
 }
 
+// Keep only arrows whose both ends resolve to existing, distinct cards.
+function sanitizeArrows(
+  arrows: unknown,
+  cards: BoardCard[],
+): BoardArrow[] {
+  if (!Array.isArray(arrows)) return [];
+  const ids = new Set(cards.map((c) => c.id));
+  return (arrows as BoardArrow[]).filter(
+    (a) =>
+      a &&
+      typeof a.id === "string" &&
+      a.from !== a.to &&
+      ids.has(a.from) &&
+      ids.has(a.to),
+  );
+}
+
 export async function getBoard(
   dataDir: string,
   id: string,
@@ -71,12 +94,14 @@ export async function getBoard(
       "utf8",
     );
     const b = JSON.parse(raw) as BoardFile;
+    const cards = reconcileColumns(Array.isArray(b.cards) ? b.cards : []);
     return {
       ...b,
       id,
       name: b.name || "Untitled board",
       parent: b.parent || "",
-      cards: reconcileColumns(Array.isArray(b.cards) ? b.cards : []),
+      cards,
+      arrows: sanitizeArrows(b.arrows, cards),
     };
   } catch {
     return null;
@@ -88,6 +113,7 @@ export interface SaveBoardInput {
   parent?: string;
   viewport?: Camera;
   cards?: BoardCard[];
+  arrows?: BoardArrow[];
   created?: string;
 }
 
@@ -120,6 +146,7 @@ export async function saveBoard(
     updated,
     ...(viewport ? { viewport } : {}),
     cards,
+    arrows: sanitizeArrows(board.arrows, cards),
   };
   await fsp.mkdir(dir, { recursive: true });
   await fsp.writeFile(file, JSON.stringify(out, null, 2), "utf8");

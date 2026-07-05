@@ -15,6 +15,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { CardShell } from "./card-shell";
+import { ArrowsLayer } from "./arrows-layer";
 
 const ADDABLE: { type: BoardCardType; label: string }[] = [
   { type: "note", label: "Note" },
@@ -62,6 +63,8 @@ export function BoardCanvas() {
     copyCards,
     pasteCards,
     hasClipboard,
+    removeArrow,
+    selectedArrowId,
   } = useBoard();
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -77,6 +80,8 @@ export function BoardCanvas() {
   const [marquee, setMarquee] = React.useState<Marquee | null>(null);
   const drawModeRef = React.useRef(drawMode);
   drawModeRef.current = drawMode;
+  const selectedArrowRef = React.useRef(selectedArrowId);
+  selectedArrowRef.current = selectedArrowId;
 
   // Viewport-relative point for a client-coords event.
   const toViewport = React.useCallback((e: { clientX: number; clientY: number }): Point => {
@@ -125,6 +130,12 @@ export function BoardCanvas() {
       const mod = e.metaKey || e.ctrlKey;
       if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
         removeCards(sel);
+        e.preventDefault();
+      } else if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedArrowRef.current
+      ) {
+        removeArrow(selectedArrowRef.current);
         e.preventDefault();
       } else if (e.key === "Escape") {
         setSelection(new Set());
@@ -177,7 +188,7 @@ export function BoardCanvas() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [removeCards, duplicateCards, setSelection, setCamera, saveNow, updateCards, cutCards, copyCards, pasteCards, hasClipboard]);
+  }, [removeCards, duplicateCards, setSelection, setCamera, saveNow, updateCards, cutCards, copyCards, pasteCards, hasClipboard, removeArrow]);
 
   /* ---- background drag: pan (space/middle) or marquee -------------------- */
   const panState = React.useRef<Camera>(camera);
@@ -357,6 +368,7 @@ export function BoardCanvas() {
           transformOrigin: "0 0",
         }}
       >
+        <ArrowsLayer />
         {sorted.map((c) => (
           <CardShell key={c.id} card={c} />
         ))}
