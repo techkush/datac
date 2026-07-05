@@ -45,23 +45,7 @@ interface Pt {
   y: number;
 }
 
-const SIDES: ArrowSide[] = ["top", "right", "bottom", "left"];
-
-// Arrows attach only to the four edge-midpoint connection points.
-function sidePoint(b: Box, side: ArrowSide): Pt {
-  switch (side) {
-    case "top":
-      return { x: b.x + b.w / 2, y: b.y };
-    case "bottom":
-      return { x: b.x + b.w / 2, y: b.y + b.h };
-    case "left":
-      return { x: b.x, y: b.y + b.h / 2 };
-    case "right":
-      return { x: b.x + b.w, y: b.y + b.h / 2 };
-  }
-}
-
-// Outward normal of each connection point.
+// Outward normal of each side.
 const NORMAL: Record<ArrowSide, Pt> = {
   top: { x: 0, y: -1 },
   bottom: { x: 0, y: 1 },
@@ -104,30 +88,20 @@ function borderClip(b: Box, target: Pt): Pt {
   return { x: c.x + dx * s, y: c.y + dy * s };
 }
 
-// Round lines auto-anchor: the least-distance pair among the two
-// components' 4×4 connection points, recomputed live as cards move.
-function nearestAnchors(
-  A: Box,
-  B: Box,
-): { p1: Pt; s1: ArrowSide; p2: Pt; s2: ArrowSide } {
-  let best = {
-    p1: sidePoint(A, "top"),
-    s1: "top" as ArrowSide,
-    p2: sidePoint(B, "top"),
-    s2: "top" as ArrowSide,
-  };
-  let bestD = Infinity;
-  for (const sa of SIDES)
-    for (const sb of SIDES) {
-      const p1 = sidePoint(A, sa);
-      const p2 = sidePoint(B, sb);
-      const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-      if (d < bestD) {
-        bestD = d;
-        best = { p1, s1: sa, p2, s2: sb };
-      }
-    }
-  return best;
+// Which side of the box a border point sits on (for elbow departure).
+function clipSide(b: Box, p: Pt): ArrowSide {
+  const dTop = Math.abs(p.y - b.y);
+  const dBottom = Math.abs(p.y - (b.y + b.h));
+  const dLeft = Math.abs(p.x - b.x);
+  const dRight = Math.abs(p.x - (b.x + b.w));
+  const m = Math.min(dTop, dBottom, dLeft, dRight);
+  return m === dTop
+    ? "top"
+    : m === dBottom
+      ? "bottom"
+      : m === dLeft
+        ? "left"
+        : "right";
 }
 
 /* ---- orthogonal (round) routing ------------------------------------------ */
@@ -342,8 +316,12 @@ function arrowGeom(a: BoardArrow, A: Box, B: Box, gap: number): ArrowGeom {
   // straight center-to-center by default; legacy "curved" renders as sharp
   const line: ArrowLine = a.line === "round" ? "round" : "sharp";
   if (line === "round") {
-    // least-distance connection-point pair, adjusted by bend/bend2
-    const { p1: rawStart, s1, p2: rawEnd, s2 } = nearestAnchors(A, B);
+    // center-anchored like sharp: the elbow departs from where the
+    // center-to-center line exits each card's border
+    const rawStart = borderClip(A, center(B));
+    const rawEnd = borderClip(B, center(A));
+    const s1 = clipSide(A, rawStart);
+    const s2 = clipSide(B, rawEnd);
     const pts = elbowPoints(rawStart, s1, rawEnd, s2, a.bend, a.bend2);
     const n = pts.length;
     pts[n - 1] = nudge(rawEnd, pts[n - 2], gap);
@@ -792,7 +770,8 @@ export function ArrowsLayer() {
             const A = boxOf(pendingArrow.from);
             if (!A) return null;
             const target = { x: pendingArrow.x, y: pendingArrow.y };
-            const p1 = sidePoint(A, pendingArrow.fromSide);
+            // preview matches the final look: center-anchored, border-clipped
+            const p1 = borderClip(A, target);
             return (
               <line
                 x1={p1.x}
