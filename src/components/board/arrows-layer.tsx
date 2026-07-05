@@ -339,7 +339,8 @@ interface ArrowGeom {
 }
 
 function arrowGeom(a: BoardArrow, A: Box, B: Box, gap: number): ArrowGeom {
-  const line = a.line ?? "sharp"; // straight center-to-center by default
+  // straight center-to-center by default; legacy "curved" renders as sharp
+  const line: ArrowLine = a.line === "round" ? "round" : "sharp";
   if (line === "round") {
     // least-distance connection-point pair, adjusted by bend/bend2
     const { p1: rawStart, s1, p2: rawEnd, s2 } = nearestAnchors(A, B);
@@ -377,28 +378,6 @@ function arrowGeom(a: BoardArrow, A: Box, B: Box, gap: number): ArrowGeom {
       curve: { p1, c, p2 },
       flat: sampleQuad(p1, c, p2),
       handle: ctrl,
-    };
-  }
-  if (line === "curved") {
-    // default gentle arc: control point offset perpendicular to the chord
-    const mx = (p1.x + p2.x) / 2;
-    const my = (p1.y + p2.y) / 2;
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const k = Math.min(48, len * 0.18);
-    const c = { x: mx - (dy / len) * k, y: my + (dx / len) * k };
-    return {
-      a,
-      line,
-      s1,
-      pts: null,
-      curve: { p1, c, p2 },
-      flat: sampleQuad(p1, c, p2),
-      handle: {
-        x: 0.25 * p1.x + 0.5 * c.x + 0.25 * p2.x,
-        y: 0.25 * p1.y + 0.5 * c.y + 0.25 * p2.y,
-      },
     };
   }
   const pts = [p1, p2];
@@ -684,9 +663,6 @@ export function ArrowsLayer() {
                       </ContextMenuRadioItem>
                       <ContextMenuRadioItem value="round">
                         Round
-                      </ContextMenuRadioItem>
-                      <ContextMenuRadioItem value="curved">
-                        Curved
                       </ContextMenuRadioItem>
                     </ContextMenuRadioGroup>
                   </ContextMenuSubContent>

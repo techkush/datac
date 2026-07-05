@@ -166,7 +166,10 @@ export type BoardCardType = BoardCard["type"];
 /* ---- arrows --------------------------------------------------------------- */
 // A connection between two cards, drawn edge-to-edge and re-anchored live
 // as the cards move.
-export type ArrowLine = "sharp" | "round" | "curved";
+// "sharp" is straight center-to-center (dragging its handle curves it);
+// "round" is the orthogonal elbow. (A separate "curved" style existed
+// briefly — legacy values render as sharp.)
+export type ArrowLine = "sharp" | "round";
 export type ArrowSide = "top" | "right" | "bottom" | "left";
 // Stroke pattern: solid, or dashed/dotted in four escalating scales.
 export type ArrowDash =
