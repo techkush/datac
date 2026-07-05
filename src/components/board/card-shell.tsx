@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/context-menu";
 import { WORKSPACE_COLORS } from "@/lib/datac/colors";
 import { CardEditingContext } from "./card-edit-context";
-import type { ArrowSide } from "@/lib/datac/board-types";
 import { cn } from "@/lib/utils";
 import { useBoard } from "./store";
 import { boardOverlayOpen, usePointerDrag } from "./use-drag";
@@ -345,28 +344,6 @@ export function CardShell({ card }: { card: BoardCard }) {
       .querySelectorAll("[data-arrow-target]")
       .forEach((el) => el.removeAttribute("data-arrow-target"));
 
-  // The target's connection point closest to the drop position (screen px).
-  const nearestSide = (el: HTMLElement, e: PointerEvent): ArrowSide => {
-    const r = el.getBoundingClientRect();
-    const pts: [ArrowSide, number, number][] = [
-      ["top", r.left + r.width / 2, r.top],
-      ["bottom", r.left + r.width / 2, r.bottom],
-      ["left", r.left, r.top + r.height / 2],
-      ["right", r.right, r.top + r.height / 2],
-    ];
-    let best: ArrowSide = "top";
-    let bestD = Infinity;
-    for (const [side, x, y] of pts) {
-      const d = Math.hypot(e.clientX - x, e.clientY - y);
-      if (d < bestD) {
-        bestD = d;
-        best = side;
-      }
-    }
-    return best;
-  };
-
-  const connectSideRef = React.useRef<ArrowSide>("top");
   const onConnectDown = usePointerDrag({
     onStart: () => {
       if (boardOverlayOpen()) return false;
@@ -379,12 +356,7 @@ export function CardShell({ card }: { card: BoardCard }) {
         { x: e.clientX - r.left, y: e.clientY - r.top },
         cameraRef.current,
       );
-      setPendingArrow({
-        from: card.id,
-        fromSide: connectSideRef.current,
-        x: p.x,
-        y: p.y,
-      });
+      setPendingArrow({ from: card.id, x: p.x, y: p.y });
       clearArrowTargets();
       hitCardAt(e)?.setAttribute("data-arrow-target", "1");
     },
@@ -393,19 +365,12 @@ export function CardShell({ card }: { card: BoardCard }) {
       setPendingArrow(null);
       if (!d.moved) return;
       const target = hitCardAt(e);
-      if (target?.dataset.cardId)
-        addArrow(
-          card.id,
-          target.dataset.cardId,
-          connectSideRef.current,
-          nearestSide(target, e),
-        );
+      if (target?.dataset.cardId) addArrow(card.id, target.dataset.cardId);
     },
   });
 
-  const connectHandle = (side: ArrowSide) => (e: React.PointerEvent) => {
+  const connectHandle = (e: React.PointerEvent) => {
     e.stopPropagation();
-    connectSideRef.current = side;
     onConnectDown(e);
   };
 
@@ -537,7 +502,7 @@ export function CardShell({ card }: { card: BoardCard }) {
                 "bg-background pointer-events-auto absolute size-2.5 cursor-crosshair rounded-full border border-rose-500 hover:bg-rose-500",
                 pos,
               )}
-              onPointerDown={connectHandle(side)}
+              onPointerDown={connectHandle}
             />
           ))}
         </>

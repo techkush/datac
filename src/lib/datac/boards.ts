@@ -40,6 +40,11 @@ export async function listBoards(dataDir: string): Promise<BoardSummary[]> {
       });
     } catch {}
   }
+  // Orphan rescue: list consumers show only root boards (!parent), so a
+  // child whose parent was deleted would become unreachable — surface it
+  // as a root instead.
+  const ids = new Set(boards.map((b) => b.id));
+  for (const b of boards) if (b.parent && !ids.has(b.parent)) b.parent = "";
   boards.sort((a, b) =>
     String(b.updated || "").localeCompare(String(a.updated || "")),
   );

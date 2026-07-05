@@ -3,7 +3,6 @@ import type { Block, DocSummary } from "./types";
 import type {
   BoardArrow,
   BoardCard,
-  BoardFile,
   BoardSummary,
   Camera,
 } from "./board-types";
@@ -101,8 +100,6 @@ export function createClient(ws: string) {
       fetch(`${API}/docs/${id}`, { method: "DELETE" }).then(json),
     listBoards: (): Promise<BoardSummary[]> =>
       fetch(`${API}/boards`).then(json),
-    getBoard: (id: string): Promise<BoardFile & { id: string; error?: string }> =>
-      fetch(`${API}/boards/${id}`).then(json),
     createBoard: (fields: BoardFields = {}): Promise<BoardSaveResult> =>
       fetch(`${API}/boards`, {
         method: "POST",

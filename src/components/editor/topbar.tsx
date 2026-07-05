@@ -60,6 +60,8 @@ function BoardsMenu() {
   async function newBoard() {
     try {
       const created = await client.createBoard({ name: "Untitled board" });
+      // fetch().json() resolves on HTTP errors — the payload is {error}
+      if (!created.id) throw new Error();
       router.push(`/w/${client.ws}/board/${created.id}`);
     } catch {
       toast.error("Could not create board");

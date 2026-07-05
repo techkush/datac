@@ -189,10 +189,6 @@ export interface BoardArrow {
   id: string;
   from: string; // card id
   to: string; // card id
-  // Anchor sides — arrows attach only to the four edge-midpoint connection
-  // points. Absent (legacy): the closest pair is picked automatically.
-  fromSide?: ArrowSide;
-  toSide?: ArrowSide;
   label?: string; // text shown at the line's midpoint
   line?: ArrowLine; // routing style, default "sharp" (straight, center-to-center)
   both?: boolean; // arrowheads on both ends

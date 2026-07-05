@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { createClient, type DatacClient } from "@/lib/datac/client";
 import { randomId } from "@/lib/datac/constants";
 import type {
-  ArrowSide,
   BoardArrow,
   BoardCard,
   BoardFile,
@@ -43,24 +42,12 @@ interface BoardContextValue {
   setGuides: (g: AlignGuides | null) => void;
   // Card-to-card connection arrows.
   arrows: BoardArrow[];
-  addArrow: (
-    from: string,
-    to: string,
-    fromSide?: ArrowSide,
-    toSide?: ArrowSide,
-  ) => void;
+  addArrow: (from: string, to: string) => void;
   updateArrow: (id: string, patch: Partial<BoardArrow>) => void;
   removeArrow: (id: string) => void;
   // Arrow being dragged out of a connection handle (ephemeral).
-  pendingArrow: {
-    from: string;
-    fromSide: ArrowSide;
-    x: number;
-    y: number;
-  } | null;
-  setPendingArrow: (
-    p: { from: string; fromSide: ArrowSide; x: number; y: number } | null,
-  ) => void;
+  pendingArrow: { from: string; x: number; y: number } | null;
+  setPendingArrow: (p: { from: string; x: number; y: number } | null) => void;
   selectedArrowId: string | null;
   setSelectedArrowId: (id: string | null) => void;
 
@@ -139,7 +126,6 @@ export function BoardProvider({
   );
   const [pendingArrow, setPendingArrow] = React.useState<{
     from: string;
-    fromSide: ArrowSide;
     x: number;
     y: number;
   } | null>(null);
@@ -161,32 +147,45 @@ export function BoardProvider({
   cameraRef.current = camera;
   nameRef.current = boardName;
 
+  // In-flight save promise, so deleteBoard can wait it out (a PUT landing
+  // after the DELETE would re-create the board file).
+  const savePromiseRef = React.useRef<Promise<void> | null>(null);
+
   const saveNow = React.useCallback(
     async (keepalive = false) => {
       if (savingRef.current || deletedRef.current) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       savingRef.current = true;
       dirtyRef.current = false;
-      try {
-        await client.saveBoard(
-          board.id,
-          {
-            name: nameRef.current.trim() || "Untitled board",
-            parent: board.parent,
-            viewport: cameraRef.current,
-            cards: cardsRef.current,
-            arrows: arrowsRef.current,
-          },
-          keepalive,
-        );
-        setSaveState("saved");
-      } catch {
-        dirtyRef.current = true;
-        setSaveState("error");
-      } finally {
-        savingRef.current = false;
-        if (dirtyRef.current) queueSave();
-      }
+      const run = (async () => {
+        try {
+          const res = await client.saveBoard(
+            board.id,
+            {
+              name: nameRef.current.trim() || "Untitled board",
+              parent: board.parent,
+              viewport: cameraRef.current,
+              cards: cardsRef.current,
+              arrows: arrowsRef.current,
+            },
+            keepalive,
+          );
+          // fetch().json() resolves on 4xx/5xx too — an error payload is a
+          // FAILED save; treating it as saved would silently lose changes
+          const err = (res as { error?: string }).error;
+          if (err) throw new Error(err);
+          setSaveState("saved");
+        } catch {
+          dirtyRef.current = true;
+          setSaveState("error");
+        } finally {
+          savingRef.current = false;
+          savePromiseRef.current = null;
+          if (dirtyRef.current && !deletedRef.current) queueSave();
+        }
+      })();
+      savePromiseRef.current = run;
+      await run;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, board.id, board.parent],
@@ -333,15 +332,12 @@ export function BoardProvider({
   /* ---- arrows -------------------------------------------------------------- */
 
   const addArrow = React.useCallback(
-    (from: string, to: string, fromSide?: ArrowSide, toSide?: ArrowSide) => {
+    (from: string, to: string) => {
       if (from === to) return;
       if (arrowsRef.current.some((a) => a.from === from && a.to === to))
         return;
       recordHistory();
-      const next = [
-        ...arrowsRef.current,
-        { id: randomId(), from, to, fromSide, toSide },
-      ];
+      const next = [...arrowsRef.current, { id: randomId(), from, to }];
       arrowsRef.current = next;
       setArrows(next);
       queueSave();
@@ -495,6 +491,7 @@ export function BoardProvider({
           name: name.trim() || "Untitled board",
           parent: parent ?? "",
         });
+        if (!created.id) throw new Error(); // HTTP error payload resolves
         await refreshBoards();
         return created.id;
       } catch {
@@ -511,12 +508,14 @@ export function BoardProvider({
   }, []);
   const closeDraw = React.useCallback(() => setDrawMode(null), []);
 
-  // Delete this board: block any pending/future autosave first so a queued
-  // save can't re-create the file after the DELETE.
+  // Delete this board: block any pending/future autosave, and wait out an
+  // in-flight save — the PUT upserts, so one landing after the DELETE would
+  // re-create the file as a zombie board.
   const deleteBoard = React.useCallback(async () => {
     deletedRef.current = true;
     dirtyRef.current = false;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (savePromiseRef.current) await savePromiseRef.current.catch(() => {});
     await client.removeBoard(board.id);
   }, [client, board.id]);
 
