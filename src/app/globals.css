@@ -255,3 +255,13 @@
 .datac-blocknote .ProseMirror-selectednode > .bn-block-content > * {
   outline: 2px solid color-mix(in srgb, var(--muted-foreground) 35%, transparent);
 }
+
+/* Visual board: the canvas viewport is select-none so drags never smear a
+ * text selection — but anything genuinely editable inside a card must get
+ * text selection (and caret placement) back. */
+[data-board-viewport] input,
+[data-board-viewport] textarea,
+[data-board-viewport] [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}

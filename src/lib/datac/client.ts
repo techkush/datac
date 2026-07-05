@@ -1,5 +1,11 @@
 // Browser-side API client, scoped to a single workspace (/api/w/<id>).
 import type { Block, DocSummary } from "./types";
+import type {
+  BoardArrow,
+  BoardCard,
+  BoardSummary,
+  Camera,
+} from "./board-types";
 
 export interface FullDoc {
   id: string;
@@ -35,6 +41,22 @@ export interface SaveResult {
   id: string;
   title: string;
   icon: string;
+  updated: string;
+  created: string;
+}
+
+export interface BoardFields {
+  name?: string;
+  parent?: string;
+  viewport?: Camera;
+  cards?: BoardCard[];
+  arrows?: BoardArrow[];
+}
+
+export interface BoardSaveResult {
+  id: string;
+  name: string;
+  parent: string;
   updated: string;
   created: string;
 }
@@ -76,6 +98,27 @@ export function createClient(ws: string) {
       }).then(json),
     remove: (id: string): Promise<{ ok: boolean }> =>
       fetch(`${API}/docs/${id}`, { method: "DELETE" }).then(json),
+    listBoards: (): Promise<BoardSummary[]> =>
+      fetch(`${API}/boards`).then(json),
+    createBoard: (fields: BoardFields = {}): Promise<BoardSaveResult> =>
+      fetch(`${API}/boards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      }).then(json),
+    saveBoard: (
+      id: string,
+      fields: BoardFields,
+      keepalive = false,
+    ): Promise<BoardSaveResult> =>
+      fetch(`${API}/boards/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+        keepalive,
+      }).then(json),
+    removeBoard: (id: string): Promise<{ ok: boolean }> =>
+      fetch(`${API}/boards/${id}`, { method: "DELETE" }).then(json),
     upload: (
       name: string,
       dataUrl: string,

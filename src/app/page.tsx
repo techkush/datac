@@ -10,6 +10,11 @@ import {
 } from "@/components/workspaces/workspaces-list";
 import { OpenApps } from "@/components/workspaces/open-apps";
 import { QuickLinks } from "@/components/workspaces/quick-links";
+import {
+  BoardsPanel,
+  type BoardsPanelWorkspace,
+} from "@/components/workspaces/boards-panel";
+import { listBoards } from "@/lib/datac/boards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +26,21 @@ export default async function Home() {
     readQuickLinks(),
     readOpenApps(),
   ]);
+
+  // Board summaries per active workspace for the left-column panel.
+  const boardWs: BoardsPanelWorkspace[] = await Promise.all(
+    Object.entries(reg)
+      .filter(([, w]) => !w.trashed && w.dataDir)
+      .sort((a, b) =>
+        String(b[1].opened || "").localeCompare(String(a[1].opened || "")),
+      )
+      .map(async ([id, w]) => ({
+        id,
+        title: w.title || "Untitled",
+        color: w.color || "",
+        boards: await listBoards(w.dataDir as string).catch(() => []),
+      })),
+  );
 
   const rows: WorkspaceRow[] = Object.entries(reg)
     .sort((a, b) =>
@@ -49,8 +69,9 @@ export default async function Home() {
       </header>
 
       <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1fr_minmax(0,2.2fr)_1fr] lg:divide-x">
-        {/* left column — intentionally free for now */}
-        <aside className="hidden lg:block" aria-hidden />
+        <aside className="hidden flex-col gap-6 px-5 py-8 lg:flex">
+          <BoardsPanel initial={boardWs} />
+        </aside>
 
         <main className="flex flex-col gap-6 px-6 py-8">
           <WorkspacesList initial={rows} />
