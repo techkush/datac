@@ -65,6 +65,8 @@ export function BoardCanvas() {
     hasClipboard,
     removeArrow,
     selectedArrowId,
+    undo,
+    redo,
   } = useBoard();
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -154,6 +156,12 @@ export function BoardCanvas() {
       } else if (mod && e.key.toLowerCase() === "v" && hasClipboard()) {
         pasteCards();
         e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === "z" && e.shiftKey) {
+        redo();
+        e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === "z") {
+        undo();
+        e.preventDefault();
       } else if (mod && e.key === "0") {
         const r = viewportRef.current?.getBoundingClientRect();
         setCamera(
@@ -188,7 +196,7 @@ export function BoardCanvas() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [removeCards, duplicateCards, setSelection, setCamera, saveNow, updateCards, cutCards, copyCards, pasteCards, hasClipboard, removeArrow]);
+  }, [removeCards, duplicateCards, setSelection, setCamera, saveNow, updateCards, cutCards, copyCards, pasteCards, hasClipboard, removeArrow, undo, redo]);
 
   /* ---- background drag: pan (space/middle) or marquee -------------------- */
   const panState = React.useRef<Camera>(camera);

@@ -67,6 +67,11 @@ interface BoardContextValue {
   addCard: (card: Omit<BoardCard, "z">) => void;
   // true for the card added most recently — such cards mount in edit mode
   isFreshCard: (id: string) => boolean;
+  // history over cards + arrows; gestures/typing bursts coalesce to one step
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   updateCard: (id: string, patch: Partial<BoardCard>) => void;
   updateCards: (batch: Record<string, Partial<BoardCard>>) => void;
   removeCards: (ids: string[]) => void;
@@ -194,10 +199,70 @@ export function BoardProvider({
     saveTimer.current = setTimeout(() => saveNow(), 700);
   }, [saveNow]);
 
+  /* ---- undo / redo --------------------------------------------------------
+   * Snapshots of {cards, arrows} taken just before each mutation. Mutations
+   * closer than 400ms apart (drag frames, typing) coalesce into one step. */
+  interface Snap {
+    cards: BoardCard[];
+    arrows: BoardArrow[];
+  }
+  const historyRef = React.useRef<{
+    past: Snap[];
+    future: Snap[];
+    lastPush: number;
+  }>({ past: [], future: [], lastPush: 0 });
+  const [, bumpHistory] = React.useReducer((n: number) => n + 1, 0);
+
+  const recordHistory = React.useCallback(() => {
+    const h = historyRef.current;
+    const now = Date.now();
+    if (now - h.lastPush < 400) {
+      h.lastPush = now;
+      return;
+    }
+    h.past.push({ cards: cardsRef.current, arrows: arrowsRef.current });
+    if (h.past.length > 100) h.past.shift();
+    h.future = [];
+    h.lastPush = now;
+    bumpHistory();
+  }, []);
+
+  const restore = React.useCallback(
+    (snap: Snap) => {
+      cardsRef.current = snap.cards;
+      setCards(snap.cards);
+      arrowsRef.current = snap.arrows;
+      setArrows(snap.arrows);
+      setSelectionState(new Set());
+      setSelectedArrowId(null);
+      historyRef.current.lastPush = 0; // next mutation records fresh
+      bumpHistory();
+      queueSave();
+    },
+    [queueSave],
+  );
+
+  const undo = React.useCallback(() => {
+    const h = historyRef.current;
+    const snap = h.past.pop();
+    if (!snap) return;
+    h.future.push({ cards: cardsRef.current, arrows: arrowsRef.current });
+    restore(snap);
+  }, [restore]);
+
+  const redo = React.useCallback(() => {
+    const h = historyRef.current;
+    const snap = h.future.pop();
+    if (!snap) return;
+    h.past.push({ cards: cardsRef.current, arrows: arrowsRef.current });
+    restore(snap);
+  }, [restore]);
+
   /* ---- card mutations (each queues a save) ------------------------------ */
 
   const mutateCards = React.useCallback(
     (fn: (cards: BoardCard[]) => BoardCard[]) => {
+      recordHistory();
       setCards((cs) => {
         const next = fn(cs);
         cardsRef.current = next;
@@ -205,7 +270,7 @@ export function BoardProvider({
       });
       queueSave();
     },
-    [queueSave],
+    [queueSave, recordHistory],
   );
 
   const lastAddedRef = React.useRef<string | null>(null);
@@ -272,6 +337,7 @@ export function BoardProvider({
       if (from === to) return;
       if (arrowsRef.current.some((a) => a.from === from && a.to === to))
         return;
+      recordHistory();
       const next = [
         ...arrowsRef.current,
         { id: randomId(), from, to, fromSide, toSide },
@@ -280,11 +346,12 @@ export function BoardProvider({
       setArrows(next);
       queueSave();
     },
-    [queueSave],
+    [queueSave, recordHistory],
   );
 
   const updateArrow = React.useCallback(
     (id: string, patch: Partial<BoardArrow>) => {
+      recordHistory();
       const next = arrowsRef.current.map((a) =>
         a.id === id ? { ...a, ...patch } : a,
       );
@@ -292,18 +359,19 @@ export function BoardProvider({
       setArrows(next);
       queueSave();
     },
-    [queueSave],
+    [queueSave, recordHistory],
   );
 
   const removeArrow = React.useCallback(
     (id: string) => {
+      recordHistory();
       const next = arrowsRef.current.filter((a) => a.id !== id);
       arrowsRef.current = next;
       setArrows(next);
       setSelectedArrowId((cur) => (cur === id ? null : cur));
       queueSave();
     },
-    [queueSave],
+    [queueSave, recordHistory],
   );
 
   // Clones are built OUTSIDE the state updater: updaters must stay pure —
@@ -495,6 +563,10 @@ export function BoardProvider({
     setSelectedArrowId,
     addCard,
     isFreshCard,
+    undo,
+    redo,
+    canUndo: historyRef.current.past.length > 0,
+    canRedo: historyRef.current.future.length > 0,
     updateCard,
     updateCards,
     removeCards,

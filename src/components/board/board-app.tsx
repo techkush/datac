@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Redo2, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,8 +60,19 @@ function DrawModeGate() {
 }
 
 function BoardHeader() {
-  const { ws, boardId, boardName, boards, saveState, wsColor, deleteBoard } =
-    useBoard();
+  const {
+    ws,
+    boardId,
+    boardName,
+    boards,
+    saveState,
+    wsColor,
+    deleteBoard,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useBoard();
   const router = useRouter();
   const [confirming, setConfirming] = React.useState(false);
   const saveLabel =
@@ -93,6 +104,29 @@ function BoardHeader() {
     >
       <BoardBreadcrumbs />
       <div className="flex shrink-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground size-7"
+          aria-label="Undo"
+          title="Undo (⌘Z)"
+          disabled={!canUndo}
+          onClick={undo}
+        >
+          <Undo2 className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground size-7"
+          aria-label="Redo"
+          title="Redo (⇧⌘Z)"
+          disabled={!canRedo}
+          onClick={redo}
+        >
+          <Redo2 className="size-4" />
+        </Button>
+        <span className="bg-border mx-1 h-4 w-px" />
         <span
           className={
             saveState === "error"
