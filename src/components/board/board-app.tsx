@@ -75,12 +75,6 @@ function BoardHeader() {
   } = useBoard();
   const router = useRouter();
   const [confirming, setConfirming] = React.useState(false);
-  const saveLabel =
-    saveState === "saving"
-      ? "Saving…"
-      : saveState === "error"
-        ? "Save failed"
-        : "Saved";
 
   async function confirmDelete() {
     try {
@@ -126,16 +120,13 @@ function BoardHeader() {
         >
           <Redo2 className="size-4" />
         </Button>
-        <span className="bg-border mx-1 h-4 w-px" />
-        <span
-          className={
-            saveState === "error"
-              ? "text-destructive text-xs"
-              : "text-muted-foreground text-xs"
-          }
-        >
-          {saveLabel}
-        </span>
+        {/* quiet save indicator: nothing when saved, only transient states */}
+        {saveState === "error" && (
+          <span className="text-destructive px-1 text-xs">Save failed</span>
+        )}
+        {saveState === "saving" && (
+          <span className="text-muted-foreground/60 px-1 text-xs">Saving…</span>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
