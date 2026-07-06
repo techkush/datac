@@ -1,9 +1,10 @@
 # Self-hosted infrastructure for the DataC Calendar module.
 #
-# Phase 1 ships the database only, so it can run on an old machine with a
-# single `docker compose up -d db`. The Next.js app can still run on the host
-# (`npm run dev`). A full app container is added in Phase 5 (see the commented
-# `app` service below) without changing this database contract.
+# Quick start (all-in-Docker):
+#   docker compose run --rm migrate     # create/upgrade the schema
+#   docker compose up -d db app         # start database + web/API server
+# Or run just the DB in Docker and the app on the host with `npm run dev`:
+#   docker compose up -d db
 
 services:
   db:
@@ -25,17 +26,40 @@ services:
       timeout: 5s
       retries: 5
 
-  # Uncomment in Phase 5 to run the web/API server in Docker too.
-  # app:
-  #   build: .
-  #   container_name: datac-app
-  #   restart: unless-stopped
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   env_file: .env
-  #   ports:
-  #     - "${PORT:-4321}:4321"
+  # Web/API server (Next.js standalone). In-container DATABASE_URL points at the
+  # `db` service host, overriding the host-oriented value from .env.
+  app:
+    build:
+      context: .
+      target: runner
+    container_name: datac-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-datac}:${POSTGRES_PASSWORD:-datac}@db:5432/${POSTGRES_DB:-datac}?schema=public"
+    ports:
+      - "${PORT:-4321}:4321"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4321/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # One-shot migration runner: `docker compose run --rm migrate`.
+  migrate:
+    build:
+      context: .
+      target: migrator
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-datac}:${POSTGRES_PASSWORD:-datac}@db:5432/${POSTGRES_DB:-datac}?schema=public"
+    restart: "no"
 
 volumes:
   datac_pgdata:

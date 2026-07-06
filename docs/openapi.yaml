@@ -1,0 +1,288 @@
+openapi: 3.0.3
+info:
+  title: DataC Calendar & Record-Keeping API
+  version: "1.0.0"
+  description: >
+    Secure API for the DataC calendar module, serving the web app and the Flutter
+    mobile client. Web clients authenticate via an httpOnly cookie set at login;
+    mobile/API clients send the JWT as a Bearer token. All timestamps are ISO-8601
+    (UTC). Recurring-event occurrences are addressed by a composite id
+    `"<masterId>::<occurrenceStartISO>"`.
+servers:
+  - url: http://localhost:4321
+    description: Self-hosted (default port)
+  - url: http://localhost:3000
+    description: Next dev server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: datac_token
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        details: {}
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: string, example: "#38bdf8" }
+        icon: { type: string, nullable: true }
+    Reminder:
+      type: object
+      properties:
+        minutesBefore: { type: integer, example: 15 }
+        method: { type: string, enum: [PUSH, EMAIL] }
+    EventStatus:
+      type: string
+      enum: [NOT_STARTED, IN_PROGRESS, PAUSED, COMPLETED, MISSED, CANCELLED]
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean }
+        timezone: { type: string }
+        color: { type: string, nullable: true }
+        categoryId: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/EventStatus" }
+        isTimeBlock: { type: boolean }
+        recurrenceRule: { type: string, nullable: true, example: "FREQ=WEEKLY" }
+        recurrenceParentId: { type: string, nullable: true }
+        originalStart: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        actualSeconds: { type: integer }
+        reminders:
+          type: array
+          items: { $ref: "#/components/schemas/Reminder" }
+    EventInput:
+      type: object
+      required: [title, startsAt, endsAt]
+      properties:
+        title: { type: string }
+        description: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean, default: false }
+        timezone: { type: string, default: UTC }
+        color: { type: string, nullable: true }
+        categoryId: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/EventStatus" }
+        isTimeBlock: { type: boolean, default: false }
+        recurrenceRule: { type: string, nullable: true }
+        reminders:
+          type: array
+          items:
+            type: object
+            properties:
+              minutesBefore: { type: integer }
+              method: { type: string, enum: [PUSH, EMAIL], default: PUSH }
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
+paths:
+  /api/auth/login:
+    post:
+      summary: Log in, receive a JWT (also set as an httpOnly cookie)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { type: object }
+        "401": { description: Invalid credentials, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/auth/logout:
+    post: { summary: Clear the web session cookie, responses: { "200": { description: OK } } }
+  /api/auth/me:
+    get: { summary: Current user and settings, responses: { "200": { description: OK }, "401": { description: Unauthorized } } }
+
+  /api/calendar/categories:
+    get:
+      summary: List categories
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { categories: { type: array, items: { $ref: "#/components/schemas/Category" } } } } } }
+    post:
+      summary: Create a category
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, color: { type: string }, icon: { type: string, nullable: true } } } } } }
+      responses: { "201": { description: Created }, "409": { description: Duplicate name } }
+  /api/calendar/categories/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    patch: { summary: Update a category, responses: { "200": { description: OK }, "404": { description: Not found } } }
+    delete: { summary: Delete a category, responses: { "200": { description: OK } } }
+
+  /api/calendar/events:
+    get:
+      summary: List events overlapping a range (recurrence expanded)
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: "#/components/schemas/Event" } } } } } }
+    post:
+      summary: Create an event
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EventInput" } } } }
+      responses: { "201": { description: Created }, "422": { description: Validation error } }
+  /api/calendar/events/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "Plain id or composite '<masterId>::<ISO>'" }
+      - { name: scope, in: query, schema: { type: string, enum: [occurrence, all] }, description: "For recurring events" }
+    get: { summary: Get an event, responses: { "200": { description: OK }, "404": { description: Not found } } }
+    patch: { summary: Update an event/occurrence/series, responses: { "200": { description: OK } } }
+    delete: { summary: Delete an event/occurrence/series, responses: { "200": { description: OK } } }
+
+  /api/calendar/settings:
+    get: { summary: Get user settings, responses: { "200": { description: OK } } }
+    patch:
+      summary: Update settings (Pomodoro durations, week start, timezone)
+      requestBody: { content: { application/json: { schema: { type: object, properties: { pomodoroWorkMinutes: { type: integer }, pomodoroBreakMinutes: { type: integer }, pomodoroLongBreakMinutes: { type: integer }, pomodoroCyclesBeforeLongBreak: { type: integer }, weekStartsOn: { type: integer, enum: [0, 1] }, timezone: { type: string }, defaultReminderMinutes: { type: integer, nullable: true } } } } } }
+      responses: { "200": { description: OK } }
+
+  /api/calendar/pomodoro/sessions:
+    post:
+      summary: Start a Pomodoro session
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [workMinutes, breakMinutes], properties: { eventId: { type: string, nullable: true }, workMinutes: { type: integer }, breakMinutes: { type: integer }, cyclesPlanned: { type: integer, nullable: true } } } } } }
+      responses: { "201": { description: Created } }
+  /api/calendar/pomodoro/sessions/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    patch:
+      summary: Update session progress; ended=true finalizes and logs focus time
+      requestBody: { content: { application/json: { schema: { type: object, properties: { cyclesCompleted: { type: integer }, focusSeconds: { type: integer }, ended: { type: boolean } } } } } }
+      responses: { "200": { description: OK }, "404": { description: Not found } }
+
+  /api/calendar/reports/summary:
+    get:
+      summary: Aggregates for the reports view
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses: { "200": { description: OK } }
+
+  /api/calendar/scheduler/tick:
+    post:
+      summary: Run one reminder pass (user session or X-Scheduler-Secret header)
+      parameters: [{ name: X-Scheduler-Secret, in: header, schema: { type: string } }]
+      responses: { "200": { description: OK }, "401": { description: Not authorized } }
+
+  /api/mobile/devices:
+    get: { summary: List the caller's registered push devices, responses: { "200": { description: OK } } }
+    post:
+      summary: Register / refresh an FCM token (idempotent)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [fcmToken], properties: { fcmToken: { type: string }, platform: { type: string, enum: [ANDROID, IOS, WEB] }, name: { type: string, nullable: true } } } } } }
+      responses: { "201": { description: Registered } }
+    delete:
+      summary: Unregister a device token
+      parameters: [{ name: token, in: query, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+
+  /api/mobile/bootstrap:
+    get:
+      summary: One-call hydrate (user, settings, categories, upcoming events)
+      parameters: [{ name: days, in: query, schema: { type: integer, default: 30 } }]
+      responses: { "200": { description: OK } }
+
+  /api/mobile/events/{id}/status:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      summary: Report a single status change from the device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/EventStatus" }
+                note: { type: string, nullable: true }
+                at: { type: string, format: date-time }
+                actualSecondsDelta: { type: integer }
+      responses: { "200": { description: OK }, "404": { description: Not found } }
+
+  /api/mobile/sync:
+    post:
+      summary: Batch reconcile statuses, activity, and completed Pomodoro sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                statusUpdates:
+                  type: array
+                  items:
+                    type: object
+                    required: [eventId, status]
+                    properties:
+                      eventId: { type: string }
+                      status: { $ref: "#/components/schemas/EventStatus" }
+                      at: { type: string, format: date-time }
+                      note: { type: string, nullable: true }
+                      actualSecondsDelta: { type: integer }
+                activity:
+                  type: array
+                  items:
+                    type: object
+                    required: [type]
+                    properties:
+                      type: { type: string }
+                      eventId: { type: string, nullable: true }
+                      at: { type: string, format: date-time }
+                      data: { type: object }
+                pomodoro:
+                  type: array
+                  items:
+                    type: object
+                    required: [workMinutes, breakMinutes]
+                    properties:
+                      eventId: { type: string, nullable: true }
+                      workMinutes: { type: integer }
+                      breakMinutes: { type: integer }
+                      cyclesCompleted: { type: integer }
+                      focusSeconds: { type: integer }
+                      startedAt: { type: string, format: date-time }
+                      endedAt: { type: string, format: date-time }
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { applied: { type: object }, errors: { type: array, items: {} } } } } } } }
+
+  /api/health:
+    get:
+      summary: Liveness + DB connectivity
+      security: []
+      responses: { "200": { description: Healthy }, "503": { description: Database unreachable } }

@@ -19,6 +19,11 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "node --import tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "docker:build": "docker compose build",
+    "docker:migrate": "docker compose run --rm migrate",
+    "docker:up": "docker compose up -d db app",
+    "docker:logs": "docker compose logs -f app",
+    "backup": "./scripts/backup.sh backups",
     "postinstall": "prisma generate"
   },
   "prisma": {

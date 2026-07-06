@@ -6,8 +6,10 @@
 // cloud Postgres with only a DATABASE_URL change.
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  // "native" for local dev; the debian target matches the Docker runtime image.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

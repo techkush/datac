@@ -5,7 +5,9 @@ system of record (via Prisma); Firebase is reserved for mobile push only (Phase
 4). The web app, the future Flutter app, and any API client all talk to the same
 secure HTTP API.
 
-> **Status:** Phases 1–4 shipped.
+> **Status:** Phases 1–5 shipped — feature-complete for the web/backend.
+> See [DEPLOY.md](./DEPLOY.md) for self-hosting, backups, and cloud migration,
+> and [openapi.yaml](./openapi.yaml) for the machine-readable API spec.
 > - **Phase 1** — foundation (Postgres + Prisma + Docker + auth) and the calendar
 >   UI (day/week/month/agenda, event CRUD, categories, notes, drag-and-drop
 >   reschedule).
@@ -21,8 +23,9 @@ secure HTTP API.
 >   mobile **status-sync API** (single + batch), a one-call bootstrap, and a
 >   web **Reports** view (status breakdown, completion rate, focus time,
 >   Pomodoro counts).
->
-> Remaining: Phase 5 ops (Docker app image, backups, OpenAPI docs).
+> - **Phase 5** — Dockerized app image (standalone, non-root) + compose `app`/
+>   `migrate` services, `/api/health`, backup/restore scripts, structured JSON
+>   logging, OpenAPI spec, and the self-host→cloud deploy guide.
 
 ## Mobile / Flutter integration (Phase 4)
 
