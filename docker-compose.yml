@@ -1,0 +1,41 @@
+# Self-hosted infrastructure for the DataC Calendar module.
+#
+# Phase 1 ships the database only, so it can run on an old machine with a
+# single `docker compose up -d db`. The Next.js app can still run on the host
+# (`npm run dev`). A full app container is added in Phase 5 (see the commented
+# `app` service below) without changing this database contract.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: datac-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-datac}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datac}
+      POSTGRES_DB: ${POSTGRES_DB:-datac}
+    ports:
+      # Exposed on localhost only; change the host side for remote access.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - datac_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-datac} -d ${POSTGRES_DB:-datac}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Uncomment in Phase 5 to run the web/API server in Docker too.
+  # app:
+  #   build: .
+  #   container_name: datac-app
+  #   restart: unless-stopped
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   env_file: .env
+  #   ports:
+  #     - "${PORT:-4321}:4321"
+
+volumes:
+  datac_pgdata:

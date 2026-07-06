@@ -1,0 +1,273 @@
+// DataC Calendar & Record-Keeping module — data model.
+//
+// PostgreSQL is the system of record. Firebase is used only for mobile push
+// (see NotificationSender), never for persistence. The schema is intentionally
+// self-contained so the server can move from a self-hosted box to a managed
+// cloud Postgres with only a DATABASE_URL change.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  OWNER
+  USER
+}
+
+// Shared task/event lifecycle. The Flutter app reports these back.
+enum EventStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum ReminderMethod {
+  PUSH
+  EMAIL
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+// Where a status change / activity originated.
+enum EventSource {
+  WEB
+  MOBILE
+  SYSTEM
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         Role     @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  settings         UserSettings?
+  categories       Category[]
+  events           Event[]
+  reminders        Reminder[]
+  devices          Device[]
+  statusHistory    StatusHistory[]
+  pomodoroSessions PomodoroSession[]
+  activity         ActivityLog[]
+
+  @@map("users")
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  timezone    String @default("UTC")
+  weekStartsOn Int   @default(0) // 0 = Sunday, 1 = Monday
+
+  // Pomodoro defaults — user-editable.
+  pomodoroWorkMinutes         Int @default(25)
+  pomodoroBreakMinutes        Int @default(5)
+  pomodoroLongBreakMinutes    Int @default(15)
+  pomodoroCyclesBeforeLongBreak Int @default(4)
+
+  // Default reminder offset (minutes before) applied to new events; null = none.
+  defaultReminderMinutes Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
+}
+
+// A registered mobile/web device that can receive FCM push.
+model Device {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fcmToken   String         @unique
+  platform   DevicePlatform @default(ANDROID)
+  name       String?
+  lastSeenAt DateTime       @default(now())
+  createdAt  DateTime       @default(now())
+
+  @@index([userId])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Calendar
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#38bdf8")
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events Event[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("categories")
+}
+
+model Event {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  notes       String? // long-form notes
+  location    String?
+
+  startsAt DateTime
+  endsAt   DateTime
+  allDay   Boolean  @default(false)
+  timezone String   @default("UTC")
+
+  color      String?
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  status      EventStatus @default(NOT_STARTED)
+  isTimeBlock Boolean     @default(false) // reserved time block for a task/activity
+
+  // Recurrence (RFC 5545 RRULE). Instance overrides are separate Event rows
+  // that point back to the series via recurrenceParentId + originalStart.
+  recurrenceRule   String?
+  recurrenceParentId String?
+  recurrenceParent   Event?  @relation("EventSeries", fields: [recurrenceParentId], references: [id], onDelete: Cascade)
+  recurrenceChildren Event[] @relation("EventSeries")
+  originalStart      DateTime? // for detached instances: the slot they replace
+  exceptions         RecurrenceException[]
+
+  // Progress tracking.
+  completedAt   DateTime?
+  actualSeconds Int       @default(0) // total time spent (from mobile/pomodoro)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reminders        Reminder[]
+  statusHistory    StatusHistory[]
+  pomodoroSessions PomodoroSession[]
+  activity         ActivityLog[]
+
+  @@index([userId, startsAt])
+  @@index([userId, status])
+  @@index([recurrenceParentId])
+  @@map("events")
+}
+
+// A cancelled/excluded occurrence of a recurring series (an EXDATE).
+model RecurrenceException {
+  id            String   @id @default(cuid())
+  eventId       String
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  originalStart DateTime
+  createdAt     DateTime @default(now())
+
+  @@unique([eventId, originalStart])
+  @@map("recurrence_exceptions")
+}
+
+model Reminder {
+  id      String @id @default(cuid())
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  minutesBefore Int            @default(0) // 0 = at start time
+  method        ReminderMethod @default(PUSH)
+
+  fireAt DateTime  // absolute time the scheduler should send at
+  sentAt DateTime? // null = pending
+
+  createdAt DateTime @default(now())
+
+  @@index([sentAt, fireAt])
+  @@index([eventId])
+  @@map("reminders")
+}
+
+// ---------------------------------------------------------------------------
+// Record-keeping / reports
+// ---------------------------------------------------------------------------
+
+model StatusHistory {
+  id        String      @id @default(cuid())
+  eventId   String
+  event     Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    EventStatus
+  source    EventSource @default(WEB)
+  note      String?
+  createdAt DateTime    @default(now())
+
+  @@index([eventId, createdAt])
+  @@map("status_history")
+}
+
+model PomodoroSession {
+  id      String  @id @default(cuid())
+  userId  String
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId String?
+  event   Event?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  workMinutes  Int
+  breakMinutes Int
+  cyclesPlanned   Int?
+  cyclesCompleted Int @default(0)
+  focusSeconds    Int @default(0) // actual focused seconds accrued
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  @@index([userId, startedAt])
+  @@index([eventId])
+  @@map("pomodoro_sessions")
+}
+
+// Free-form activity stream for reports (opened app, drag-rescheduled, etc.).
+model ActivityLog {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId   String?
+  event     Event?      @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  type      String
+  source    EventSource @default(WEB)
+  data      Json?
+  createdAt DateTime    @default(now())
+
+  @@index([userId, createdAt])
+  @@map("activity_log")
+}

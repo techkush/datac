@@ -3,6 +3,7 @@ import { readRegistry } from "@/lib/datac/registry";
 import { focusTotals } from "@/lib/datac/focus";
 import { readQuickLinks } from "@/lib/datac/quicklinks";
 import { readOpenApps } from "@/lib/datac/openapps";
+import { CalendarDays } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   WorkspacesList,
@@ -65,7 +66,15 @@ export default async function Home() {
           </span>
           DataC Workspace
         </h1>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <a
+            href="/calendar"
+            className="hover:bg-accent flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium"
+          >
+            <CalendarDays className="text-primary size-4" /> Calendar
+          </a>
+          <ThemeToggle />
+        </div>
       </header>
 
       <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1fr_minmax(0,2.2fr)_1fr] lg:divide-x">
