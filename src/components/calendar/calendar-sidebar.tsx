@@ -10,6 +10,9 @@ import {
   Plus,
   Check,
   BarChart3,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import {
   addMonths,
@@ -25,11 +28,97 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { calendarApi } from "@/lib/calendar/api";
 import { monthWeeks } from "@/lib/calendar/dates";
 import { CALENDAR_COLORS } from "@/lib/calendar/constants";
+import type { Category } from "@/lib/calendar/types";
 import { useCalendar } from "./store";
 import { ReportsDialog } from "./reports-dialog";
+
+function CategoryEditDialog({
+  category,
+  onClose,
+}: {
+  category: Category | null;
+  onClose: () => void;
+}) {
+  const { editCategory, removeCategory } = useCalendar();
+  const [name, setName] = React.useState("");
+  const [color, setColor] = React.useState<string>(CALENDAR_COLORS[7]);
+
+  React.useEffect(() => {
+    if (category) {
+      setName(category.name);
+      setColor(category.color);
+    }
+  }, [category]);
+
+  const save = async () => {
+    if (!category || !name.trim()) return;
+    await editCategory(category.id, { name: name.trim(), color });
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!category} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Edit category</DialogTitle>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {CALENDAR_COLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              className="flex size-6 items-center justify-center rounded-full"
+              style={{ background: c }}
+              aria-label={c}
+            >
+              {color === c && <Check className="size-3.5 text-white" />}
+            </button>
+          ))}
+        </div>
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="ghost"
+            className="text-destructive"
+            onClick={async () => {
+              if (category) await removeCategory(category.id);
+              onClose();
+            }}
+          >
+            <Trash2 className="size-4" /> Delete
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={save}>Save</Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function MiniMonth() {
   const { cursor, setCursor, setView, weekStartsOn } = useCalendar();
@@ -147,9 +236,10 @@ function AddCategory() {
 }
 
 export function CalendarSidebar() {
-  const { user, categories, hiddenCategories, toggleCategory, openNew } =
+  const { user, categories, hiddenCategories, toggleCategory, removeCategory, openNew } =
     useCalendar();
   const [reportsOpen, setReportsOpen] = React.useState(false);
+  const [editCat, setEditCat] = React.useState<Category | null>(null);
 
   return (
     <aside className="bg-sidebar flex w-64 shrink-0 flex-col border-r">
@@ -197,10 +287,12 @@ export function CalendarSidebar() {
           {categories.map((c) => {
             const hidden = hiddenCategories.has(c.id);
             return (
-              <li key={c.id}>
+              <li key={c.id} className="group/cat flex items-center">
                 <button
                   onClick={() => toggleCategory(c.id)}
-                  className="hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm"
+                  onDoubleClick={() => setEditCat(c)}
+                  title="Click to show/hide · double-click to edit"
+                  className="hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
                 >
                   <span
                     className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
@@ -218,11 +310,34 @@ export function CalendarSidebar() {
                     {c.name}
                   </span>
                 </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/cat:opacity-100 data-[state=open]:opacity-100"
+                      aria-label="Category options"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setEditCat(c)}>
+                      <Pencil /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => removeCategory(c.id)}
+                    >
+                      <Trash2 /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </li>
             );
           })}
         </ul>
       </div>
+
+      <CategoryEditDialog category={editCat} onClose={() => setEditCat(null)} />
 
       <div className="flex items-center gap-2 border-t px-3 py-2">
         <div className="min-w-0 flex-1">

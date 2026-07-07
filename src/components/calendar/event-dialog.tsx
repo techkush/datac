@@ -2,15 +2,15 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { Play, Trash2, X } from "lucide-react";
+import { Play, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,11 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  REMINDER_PRESETS,
-  STATUS_DEFS,
-  CALENDAR_COLORS,
-} from "@/lib/calendar/constants";
+import { REMINDER_PRESETS, STATUS_DEFS } from "@/lib/calendar/constants";
 import type { EventStatus } from "@/lib/calendar/constants";
 import {
   RECURRENCE_OPTIONS,
@@ -51,6 +47,7 @@ import { usePomodoro } from "./pomodoro";
 import type { EventInput } from "@/lib/calendar/types";
 
 const NO_CATEGORY = "__none__";
+const NO_REMINDER = "none";
 
 function toLocalDateTime(iso: string): string {
   return format(new Date(iso), "yyyy-MM-dd'T'HH:mm");
@@ -60,13 +57,8 @@ function toLocalDate(iso: string): string {
 }
 
 export function EventDialog() {
-  const {
-    dialog,
-    closeDialog,
-    categories,
-    saveEvent,
-    deleteEvent,
-  } = useCalendar();
+  const { dialog, closeDialog, categories, saveEvent, deleteEvent } =
+    useCalendar();
   const pomodoro = usePomodoro();
   const editing = dialog.event;
 
@@ -75,13 +67,11 @@ export function EventDialog() {
   const [start, setStart] = React.useState("");
   const [end, setEnd] = React.useState("");
   const [categoryId, setCategoryId] = React.useState<string>(NO_CATEGORY);
-  const [color, setColor] = React.useState<string | null>(null);
   const [location, setLocation] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [status, setStatus] = React.useState<EventStatus>("NOT_STARTED");
   const [isTimeBlock, setIsTimeBlock] = React.useState(false);
-  const [reminders, setReminders] = React.useState<Set<number>>(new Set());
-  const [customReminder, setCustomReminder] = React.useState("");
+  const [reminder, setReminder] = React.useState<number | null>(15);
   const [recurrence, setRecurrence] = React.useState<RecurrencePreset>("none");
   const [until, setUntil] = React.useState("");
   const [editScope, setEditScope] = React.useState<"occurrence" | "all">(
@@ -93,7 +83,7 @@ export function EventDialog() {
   // An event is part of a series if it carries a rule or points at a master.
   const isRecurring = !!(editing?.recurrenceRule || editing?.recurrenceParentId);
 
-  // Reset form whenever the dialog opens.
+  // Reset form whenever the sheet opens.
   React.useEffect(() => {
     if (!dialog.open) return;
     const now = new Date();
@@ -114,12 +104,11 @@ export function EventDialog() {
           : toLocalDateTime(editing.endsAt),
       );
       setCategoryId(editing.categoryId || NO_CATEGORY);
-      setColor(editing.color);
       setLocation(editing.location || "");
       setDescription(editing.description || "");
       setStatus(editing.status);
       setIsTimeBlock(editing.isTimeBlock);
-      setReminders(new Set(editing.reminders.map((r) => r.minutesBefore)));
+      setReminder(editing.reminders[0]?.minutesBefore ?? null);
       setRecurrence(detectPreset(editing.recurrenceRule));
       setUntil(detectUntil(editing.recurrenceRule));
       setEditScope("occurrence");
@@ -130,30 +119,20 @@ export function EventDialog() {
       setStart(ad ? toLocalDate(defStart) : toLocalDateTime(defStart));
       setEnd(ad ? toLocalDate(defEnd) : toLocalDateTime(defEnd));
       setCategoryId(NO_CATEGORY);
-      setColor(null);
       setLocation("");
       setDescription("");
       setStatus("NOT_STARTED");
       setIsTimeBlock(false);
-      setReminders(new Set([15]));
+      setReminder(15);
       setRecurrence("none");
       setUntil("");
       setEditScope("occurrence");
     }
     setConfirmDelete(false);
-    setCustomReminder("");
   }, [dialog.open, dialog.event, dialog.draftStart, dialog.draftEnd, dialog.draftAllDay, editing]);
 
-  const toggleReminder = (m: number) =>
-    setReminders((prev) => {
-      const next = new Set(prev);
-      if (next.has(m)) next.delete(m);
-      else next.add(m);
-      return next;
-    });
-
-  // Reformat the date/time fields when switching all-day on/off so the input
-  // value always matches its type (date vs datetime-local) and stays valid.
+  // Reformat the date/time fields when switching all-day on/off so the value
+  // always matches its input type (date vs datetime-local) and stays valid.
   const toggleAllDay = (v: boolean) => {
     setAllDay(v);
     if (v) {
@@ -167,8 +146,6 @@ export function EventDialog() {
 
   const buildInput = (): EventInput | null => {
     if (!title.trim()) return null;
-    // `start`/`end` may hold a datetime-local ("...T09:00") or a date
-    // ("yyyy-MM-dd") string depending on the all-day toggle. Normalize both.
     const datePart = (s: string) => s.slice(0, 10);
     let startDate: Date;
     let endDate: Date;
@@ -183,23 +160,20 @@ export function EventDialog() {
       toast.error("Please set a valid start and end time");
       return null;
     }
-    const startISO = startDate.toISOString();
-    const endISO = endDate.toISOString();
-    const rem = [...reminders].sort((a, b) => a - b);
     return {
       title: title.trim(),
-      startsAt: startISO,
-      endsAt: endISO,
+      startsAt: startDate.toISOString(),
+      endsAt: endDate.toISOString(),
       allDay,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       categoryId: categoryId === NO_CATEGORY ? null : categoryId,
-      color,
+      color: null, // block color follows the category
       location: location.trim() || null,
       description: description.trim() || null,
       status,
       isTimeBlock,
       recurrenceRule: buildRRule(recurrence, until),
-      reminders: rem.map((m) => ({ minutesBefore: m })),
+      reminders: reminder === null ? [] : [{ minutesBefore: reminder }],
     };
   };
 
@@ -208,11 +182,7 @@ export function EventDialog() {
     if (!input) return;
     setSaving(true);
     try {
-      await saveEvent(
-        input,
-        editing?.id,
-        isRecurring ? editScope : undefined,
-      );
+      await saveEvent(input, editing?.id, isRecurring ? editScope : undefined);
     } catch {
       /* toast shown in store */
     } finally {
@@ -226,121 +196,56 @@ export function EventDialog() {
     else deleteEvent(editing.id);
   };
 
-  const addCustom = () => {
-    const n = parseInt(customReminder, 10);
-    if (!isNaN(n) && n >= 0) {
-      toggleReminder(n);
-      setCustomReminder("");
-    }
-  };
-
-  const presetMinutes = new Set(REMINDER_PRESETS.map((p) => p.minutes));
-
   return (
     <>
-    <Dialog open={dialog.open} onOpenChange={(o) => !o && closeDialog()}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{editing ? "Edit event" : "New event"}</DialogTitle>
-        </DialogHeader>
+      <Sheet open={dialog.open} onOpenChange={(o) => !o && closeDialog()}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b">
+            <SheetTitle>{editing ? "Edit event" : "New event"}</SheetTitle>
+          </SheetHeader>
 
-        <div className="space-y-3">
-          <Input
-            autoFocus
-            placeholder="Add title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="text-base"
-          />
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            <Input
+              autoFocus
+              placeholder="Add title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="text-base"
+            />
 
-          <div className="flex items-center justify-between">
-            <Label htmlFor="allday" className="text-sm">
-              All day
-            </Label>
-            <Switch id="allday" checked={allDay} onCheckedChange={toggleAllDay} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-muted-foreground text-xs">Starts</Label>
-              <Input
-                type={allDay ? "date" : "datetime-local"}
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-muted-foreground text-xs">Ends</Label>
-              <Input
-                type={allDay ? "date" : "datetime-local"}
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-muted-foreground text-xs">Repeat</Label>
-            <div className="mt-1 flex items-center gap-2">
-              <Select
-                value={recurrence}
-                onValueChange={(v) => setRecurrence(v as RecurrencePreset)}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RECURRENCE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {recurrence !== "none" && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground text-xs">until</span>
-                  <Input
-                    type="date"
-                    value={until}
-                    onChange={(e) => setUntil(e.target.value)}
-                    className="h-9 w-36"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {isRecurring && (
-            <div className="bg-muted/50 rounded-md p-2.5">
-              <Label className="text-muted-foreground text-xs">
-                Apply changes to
+            <div className="flex items-center justify-between">
+              <Label htmlFor="allday" className="text-sm">
+                All day
               </Label>
-              <div className="mt-1 flex gap-1.5">
-                {(
-                  [
-                    { v: "occurrence", label: "This event" },
-                    { v: "all", label: "All events" },
-                  ] as const
-                ).map((o) => (
-                  <button
-                    key={o.v}
-                    onClick={() => setEditScope(o.v)}
-                    data-active={editScope === o.v}
-                    className="data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:border-primary flex-1 rounded-md border px-2 py-1.5 text-xs font-medium"
-                  >
-                    {o.label}
-                  </button>
-                ))}
+              <Switch id="allday" checked={allDay} onCheckedChange={toggleAllDay} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-muted-foreground text-xs">Starts</Label>
+                <Input
+                  type={allDay ? "date" : "datetime-local"}
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-muted-foreground text-xs">Ends</Label>
+                <Input
+                  type={allDay ? "date" : "datetime-local"}
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                />
               </div>
             </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-muted-foreground text-xs">Category</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -357,6 +262,7 @@ export function EventDialog() {
                 </SelectContent>
               </Select>
             </div>
+
             {editing && (
               <div>
                 <Label className="text-muted-foreground text-xs">Status</Label>
@@ -364,7 +270,7 @@ export function EventDialog() {
                   value={status}
                   onValueChange={(v) => setStatus(v as EventStatus)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -381,148 +287,164 @@ export function EventDialog() {
                 </Select>
               </div>
             )}
-          </div>
 
-          <div>
-            <Label className="text-muted-foreground text-xs">Color</Label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setColor(null)}
-                data-active={color === null}
-                className="data-[active=true]:ring-primary size-6 rounded-full border data-[active=true]:ring-2"
-                title="Follow category"
-              />
-              {CALENDAR_COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  data-active={color === c}
-                  className="data-[active=true]:ring-primary size-6 rounded-full data-[active=true]:ring-2 data-[active=true]:ring-offset-1"
-                  style={{ background: c }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <Input
-            placeholder="Location"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-          />
-
-          <Textarea
-            placeholder="Description / notes"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-          />
-
-          <div>
-            <Label className="text-muted-foreground text-xs">Reminders</Label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {REMINDER_PRESETS.map((p) => (
-                <button
-                  key={p.minutes}
-                  onClick={() => toggleReminder(p.minutes)}
-                  data-active={reminders.has(p.minutes)}
-                  className="data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:border-primary rounded-full border px-2.5 py-1 text-xs"
-                >
-                  {p.label}
-                </button>
-              ))}
-              {[...reminders]
-                .filter((m) => !presetMinutes.has(m))
-                .map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => toggleReminder(m)}
-                    className="bg-primary text-primary-foreground border-primary flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs"
-                  >
-                    {m} min before <X className="size-3" />
-                  </button>
-                ))}
-            </div>
-            <div className="mt-1.5 flex items-center gap-2">
-              <Input
-                type="number"
-                min={0}
-                placeholder="Custom minutes before"
-                value={customReminder}
-                onChange={(e) => setCustomReminder(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addCustom()}
-                className="h-8 w-48"
-              />
-              <Button size="sm" variant="outline" onClick={addCustom}>
-                Add
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between rounded-md border p-2.5">
             <div>
-              <Label htmlFor="timeblock" className="text-sm">
-                Time block
-              </Label>
-              <p className="text-muted-foreground text-xs">
-                Reserve this period for focused work.
-              </p>
+              <Label className="text-muted-foreground text-xs">Repeat</Label>
+              <div className="mt-1 flex items-center gap-2">
+                <Select
+                  value={recurrence}
+                  onValueChange={(v) => setRecurrence(v as RecurrencePreset)}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECURRENCE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {recurrence !== "none" && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">until</span>
+                    <Input
+                      type="date"
+                      value={until}
+                      onChange={(e) => setUntil(e.target.value)}
+                      className="h-9 w-36"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-            <Switch
-              id="timeblock"
-              checked={isTimeBlock}
-              onCheckedChange={setIsTimeBlock}
-            />
-          </div>
 
-          {editing && (
+            {isRecurring && (
+              <div className="bg-muted/50 rounded-md p-2.5">
+                <Label className="text-muted-foreground text-xs">
+                  Apply changes to
+                </Label>
+                <div className="mt-1 flex gap-1.5">
+                  {(
+                    [
+                      { v: "occurrence", label: "This event" },
+                      { v: "all", label: "All events" },
+                    ] as const
+                  ).map((o) => (
+                    <button
+                      key={o.v}
+                      onClick={() => setEditScope(o.v)}
+                      data-active={editScope === o.v}
+                      className="data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:border-primary flex-1 rounded-md border px-2 py-1.5 text-xs font-medium"
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label className="text-muted-foreground text-xs">Reminder</Label>
+              <Select
+                value={reminder === null ? NO_REMINDER : String(reminder)}
+                onValueChange={(v) =>
+                  setReminder(v === NO_REMINDER ? null : Number(v))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_REMINDER}>No reminder</SelectItem>
+                  {REMINDER_PRESETS.map((p) => (
+                    <SelectItem key={p.minutes} value={String(p.minutes)}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Input
+              placeholder="Location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+
+            <Textarea
+              placeholder="Description / notes"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+
             <div className="flex items-center justify-between rounded-md border p-2.5">
               <div>
-                <p className="text-sm font-medium">Focus timer</p>
+                <Label htmlFor="timeblock" className="text-sm">
+                  Time block
+                </Label>
                 <p className="text-muted-foreground text-xs">
-                  {editing.actualSeconds > 0
-                    ? `${Math.round(editing.actualSeconds / 60)} min of focus logged`
-                    : "Run a Pomodoro against this event."}
+                  Reserve this period for focused work.
                 </p>
               </div>
+              <Switch
+                id="timeblock"
+                checked={isTimeBlock}
+                onCheckedChange={setIsTimeBlock}
+              />
+            </div>
+
+            {editing && (
+              <div className="flex items-center justify-between rounded-md border p-2.5">
+                <div>
+                  <p className="text-sm font-medium">Focus timer</p>
+                  <p className="text-muted-foreground text-xs">
+                    {editing.actualSeconds > 0
+                      ? `${Math.round(editing.actualSeconds / 60)} min of focus logged`
+                      : "Run a Pomodoro against this event."}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    pomodoro.start({ id: editing.id, title: editing.title });
+                    closeDialog();
+                  }}
+                >
+                  <Play className="size-4" /> Start focus
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <SheetFooter className="flex-row items-center justify-between border-t">
+            {editing ? (
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  pomodoro.start({ id: editing.id, title: editing.title });
-                  closeDialog();
-                }}
+                variant="ghost"
+                size="icon"
+                className="text-destructive"
+                onClick={onDelete}
+                aria-label="Delete event"
               >
-                <Play className="size-4" /> Start focus
+                <Trash2 className="size-4" />
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={closeDialog}>
+                Cancel
+              </Button>
+              <Button onClick={onSave} disabled={saving || !title.trim()}>
+                {saving ? "Saving…" : editing ? "Save" : "Create"}
               </Button>
             </div>
-          )}
-        </div>
-
-        <DialogFooter className="flex-row justify-between sm:justify-between">
-          {editing ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-destructive"
-              onClick={onDelete}
-              aria-label="Delete event"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={closeDialog}>
-              Cancel
-            </Button>
-            <Button onClick={onSave} disabled={saving || !title.trim()}>
-              {saving ? "Saving…" : editing ? "Save" : "Create"}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

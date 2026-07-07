@@ -63,6 +63,8 @@ interface CalendarCtx {
     scope?: "occurrence" | "all",
   ) => Promise<void>;
   addCategory: (name: string, color: string) => Promise<void>;
+  editCategory: (id: string, patch: { name?: string; color?: string }) => Promise<void>;
+  removeCategory: (id: string) => Promise<void>;
 }
 
 const Ctx = React.createContext<CalendarCtx | null>(null);
@@ -261,6 +263,38 @@ export function CalendarProvider({
     }
   }, []);
 
+  const editCategory = React.useCallback(
+    async (id: string, patch: { name?: string; color?: string }) => {
+      try {
+        const cat = await calendarApi.updateCategory(id, patch);
+        setCategories((prev) =>
+          prev
+            .map((c) => (c.id === id ? cat : c))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+        // Colors may have changed → refresh event rendering.
+        await reload();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not update category");
+      }
+    },
+    [reload],
+  );
+
+  const removeCategory = React.useCallback(
+    async (id: string) => {
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      try {
+        await calendarApi.deleteCategory(id);
+        toast.success("Category deleted");
+        await reload();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not delete category");
+      }
+    },
+    [reload],
+  );
+
   const value: CalendarCtx = {
     user,
     weekStartsOn,
@@ -286,6 +320,8 @@ export function CalendarProvider({
     deleteEvent,
     moveEvent,
     addCategory,
+    editCategory,
+    removeCategory,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
