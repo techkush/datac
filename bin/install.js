@@ -68,6 +68,17 @@ try {
   if (fs.existsSync(path.join(REPO, 'assets')))
     copyDir(path.join(REPO, 'assets'), path.join(APP, 'assets'));
   fs.chmodSync(path.join(APP, 'bin', 'datac.js'), 0o755);
+  // Runtime config: the standalone server loads .env from its cwd (this app
+  // dir), so DATABASE_URL and friends must live here. Without it the daemon
+  // has no database and every notes/board/calendar request fails.
+  const envSrc = path.join(REPO, '.env');
+  if (fs.existsSync(envSrc)) {
+    fs.copyFileSync(envSrc, path.join(APP, '.env'));
+    fs.chmodSync(path.join(APP, '.env'), 0o600);
+  } else {
+    console.log('\n  ' + c.r('!') + ' no .env in the repo — the daemon will have no DATABASE_URL.');
+    console.log('    ' + c.d('cp .env.example .env, fill it in, and re-run npm run install-cli'));
+  }
   done();
 
   // 3) launcher on PATH
