@@ -273,3 +273,49 @@ model ActivityLog {
   @@index([userId, createdAt])
   @@map("activity_log")
 }
+
+// ---------------------------------------------------------------------------
+// Notes documents (dataC workspaces)
+// ---------------------------------------------------------------------------
+// Postgres is the system of record for page content. Each save also mirrors
+// a JSON snapshot back into the workspace's dataC/ folder so the folder plus
+// open.dc remains a complete, portable local copy of the notes.
+
+model Doc {
+  id          String    @id @default(cuid())
+  workspaceId String // registry workspace id (~/.datac/workspaces.json)
+  docId       String // public doc id used in URLs and page-block refs
+  title       String    @default("Untitled")
+  icon        String    @default("")
+  cover       String    @default("")
+  parent      String    @default("")
+  orphaned    Boolean   @default(false)
+  status      String    @default("")
+  blocks      Json      @default("[]")
+  comments    Json      @default("{}")
+  deletedAt   DateTime? // soft delete — revisions are kept for recovery
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
+
+  revisions DocRevision[]
+
+  @@unique([workspaceId, docId])
+  @@index([workspaceId, updatedAt])
+  @@map("docs")
+}
+
+// Append-only history: every content-changing save inserts a snapshot, so a
+// bad save can never destroy a page — any prior state can be restored.
+model DocRevision {
+  id        String   @id @default(cuid())
+  docRef    String
+  doc       Doc      @relation(fields: [docRef], references: [id], onDelete: Cascade)
+  title     String
+  blocks    Json
+  comments  Json
+  cause     String   @default("save") // save | import | delete | restore
+  createdAt DateTime @default(now())
+
+  @@index([docRef, createdAt])
+  @@map("doc_revisions")
+}

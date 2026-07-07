@@ -1,5 +1,8 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
+import { prisma } from "@/lib/db/prisma";
+import type { Prisma, Doc } from "@/generated/prisma";
 import type { Block, DocSummary } from "./types";
 import {
   isBlockNoteDoc,
@@ -58,93 +61,259 @@ export function collectPageIds(blocks: Block[] | undefined, out: string[]) {
   }
 }
 
-/* ---- document ops (scoped to a dataDir) --------------------------------
- * Canonical store is <id>.json (a block-tree document). Legacy <id>.md
- * files are still read and reported, then migrated to JSON on first save. */
-export async function listDocs(dataDir: string): Promise<DocSummary[]> {
+/* ---- document ops (Postgres system of record) ---------------------------
+ * Docs live in the `docs` table keyed by (workspaceId, docId); every
+ * content-changing save appends a DocRevision snapshot, so no save can
+ * destroy a page irrecoverably. Each save also mirrors a <id>.json file
+ * into the workspace's dataC/ folder, keeping the folder + open.dc a
+ * complete portable local copy. Pre-existing <id>.json files are imported
+ * into the DB on first access; legacy <id>.md files are still served from
+ * disk until the client migrates them with a save. */
+
+const REVISIONS_KEPT = 100;
+
+const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+const asJson = (v: unknown) => v as Prisma.InputJsonValue;
+const rowBlocks = (row: Doc) => (row.blocks ?? []) as unknown as Block[];
+
+interface MirrorShape {
+  title: string;
+  icon: string;
+  cover: string;
+  parent: string;
+  orphaned: boolean;
+  status: string;
+  created: string | null;
+  updated: string | null;
+  blocks: unknown;
+  comments: unknown;
+}
+
+function rowToMirror(row: Doc): MirrorShape {
+  return {
+    title: row.title,
+    icon: row.icon,
+    cover: row.cover,
+    parent: row.parent,
+    orphaned: row.orphaned,
+    status: row.status,
+    created: iso(row.createdAt),
+    updated: iso(row.updatedAt),
+    blocks: row.blocks ?? [],
+    comments: row.comments ?? {},
+  };
+}
+
+// Best-effort atomic mirror write (temp file + rename): the DB commit has
+// already succeeded, so a mirror failure must never fail the save.
+async function mirrorDoc(dataDir: string, docId: string, row: Doc) {
+  try {
+    await fsp.mkdir(dataDir, { recursive: true });
+    const file = path.join(dataDir, docId + ".json");
+    const tmp = path.join(
+      dataDir,
+      `.${docId}.${crypto.randomBytes(4).toString("hex")}.tmp`,
+    );
+    await fsp.writeFile(tmp, JSON.stringify(rowToMirror(row), null, 2), "utf8");
+    await fsp.rename(tmp, file);
+  } catch {}
+}
+
+interface FileDoc {
+  title?: string;
+  icon?: string;
+  cover?: string;
+  parent?: string;
+  orphaned?: boolean;
+  status?: string;
+  created?: string;
+  updated?: string;
+  blocks?: Block[];
+  comments?: Record<string, unknown>;
+}
+
+const parseDate = (s: string | undefined | null) => {
+  const d = s ? new Date(s) : null;
+  return d && !isNaN(d.getTime()) ? d : null;
+};
+
+// One-time adoption of a pre-DB <id>.json file into Postgres.
+async function importFileDoc(
+  workspaceId: string,
+  dataDir: string,
+  docId: string,
+): Promise<Doc | null> {
+  let d: FileDoc;
+  try {
+    d = JSON.parse(
+      await fsp.readFile(path.join(dataDir, docId + ".json"), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+  const created = parseDate(d.created) || new Date();
+  const updated = parseDate(d.updated) || created;
+  try {
+    return await prisma.doc.create({
+      data: {
+        workspaceId,
+        docId,
+        title: d.title || "Untitled",
+        icon: d.icon || "",
+        cover: d.cover || "",
+        parent: d.parent || "",
+        orphaned: !!d.orphaned,
+        status: d.status || "",
+        blocks: asJson(Array.isArray(d.blocks) ? d.blocks : []),
+        comments: asJson(
+          d.comments && typeof d.comments === "object" ? d.comments : {},
+        ),
+        createdAt: created,
+        updatedAt: updated,
+        revisions: {
+          create: {
+            title: d.title || "Untitled",
+            blocks: asJson(Array.isArray(d.blocks) ? d.blocks : []),
+            comments: asJson(
+              d.comments && typeof d.comments === "object" ? d.comments : {},
+            ),
+            cause: "import",
+          },
+        },
+      },
+    });
+  } catch {
+    // Unique-constraint race with a concurrent import: the row exists now.
+    return prisma.doc.findUnique({
+      where: { workspaceId_docId: { workspaceId, docId } },
+    });
+  }
+}
+
+// Adopt every not-yet-imported <id>.json in the workspace folder. Docs the
+// DB already knows (even soft-deleted ones) are left alone so a deleted
+// page's stale mirror can't resurrect itself.
+async function importFileDocs(workspaceId: string, dataDir: string) {
+  let entries: string[] = [];
+  try {
+    entries = await fsp.readdir(dataDir);
+  } catch {
+    return;
+  }
+  const ids = entries
+    .filter((n) => n.endsWith(".json") && !n.startsWith("."))
+    .map((n) => n.slice(0, -5))
+    .filter((id) => safeId(id));
+  if (!ids.length) return;
+  const known = new Set(
+    (
+      await prisma.doc.findMany({
+        where: { workspaceId },
+        select: { docId: true },
+      })
+    ).map((r) => r.docId),
+  );
+  for (const id of ids) {
+    if (!known.has(id)) await importFileDoc(workspaceId, dataDir, id);
+  }
+}
+
+// Legacy markdown docs still on disk (served until first save migrates them).
+async function listLegacyMd(dataDir: string, skip: Set<string>) {
   let entries: string[] = [];
   try {
     entries = await fsp.readdir(dataDir);
   } catch {
     return [];
   }
-  const byId: Record<string, DocSummary & { _json: boolean }> = {};
+  const out: DocSummary[] = [];
   for (const name of entries) {
-    let id: string;
-    let isJson: boolean;
-    if (name.endsWith(".json")) {
-      id = name.slice(0, -5);
-      isJson = true;
-    } else if (name.endsWith(".md")) {
-      id = name.slice(0, -3);
-      isJson = false;
-    } else continue;
-    if (byId[id] && byId[id]._json) continue; // a .json wins over a legacy .md
+    if (!name.endsWith(".md") || name.startsWith(".")) continue;
+    const id = name.slice(0, -3);
+    if (!safeId(id) || skip.has(id)) continue;
     try {
-      const raw = await fsp.readFile(path.join(dataDir, name), "utf8");
-      let title: string | undefined,
-        icon: string | undefined,
-        updated: string | null = null,
-        created: string | null = null,
-        parent = "",
-        orphaned = false,
-        status = "";
-      const childOrder: string[] = [];
-      if (isJson) {
-        const d = JSON.parse(raw);
-        title = d.title;
-        icon = d.icon;
-        updated = d.updated ?? null;
-        created = d.created ?? null;
-        parent = d.parent || "";
-        orphaned = !!d.orphaned;
-        status = d.status || "";
-        collectPageIds(d.blocks, childOrder);
-      } else {
-        const { meta } = parseDoc(raw);
-        title = meta.title;
-        icon = meta.icon;
-        updated = meta.updated ?? null;
-        created = meta.created ?? null;
-      }
-      byId[id] = {
+      const { meta } = parseDoc(
+        await fsp.readFile(path.join(dataDir, name), "utf8"),
+      );
+      out.push({
         id,
-        title: title || "Untitled",
-        icon: icon || "",
-        updated,
-        created,
-        parent,
-        orphaned,
-        status,
-        childOrder,
-        _json: isJson,
-      };
+        title: meta.title || "Untitled",
+        icon: meta.icon || "",
+        updated: meta.updated ?? null,
+        created: meta.created ?? null,
+        parent: "",
+        orphaned: false,
+        status: "",
+        childOrder: [],
+      });
     } catch {}
   }
-  const docs = Object.values(byId).map(({ _json, ...d }) => {
-    void _json;
-    return d;
+  return out;
+}
+
+export async function listDocs(
+  workspaceId: string,
+  dataDir: string,
+): Promise<DocSummary[]> {
+  await importFileDocs(workspaceId, dataDir);
+  const rows = await prisma.doc.findMany({
+    where: { workspaceId, deletedAt: null },
+    orderBy: { updatedAt: "desc" },
   });
+  const docs: DocSummary[] = rows.map((row) => {
+    const childOrder: string[] = [];
+    collectPageIds(rowBlocks(row), childOrder);
+    return {
+      id: row.docId,
+      title: row.title,
+      icon: row.icon,
+      updated: iso(row.updatedAt),
+      created: iso(row.createdAt),
+      parent: row.parent,
+      orphaned: row.orphaned,
+      status: row.status,
+      childOrder,
+    };
+  });
+  const known = new Set(rows.map((r) => r.docId));
+  docs.push(...(await listLegacyMd(dataDir, known)));
   docs.sort((a, b) =>
     String(b.updated || "").localeCompare(String(a.updated || "")),
   );
   return docs;
 }
 
-export async function getDoc(dataDir: string, id: string) {
-  // prefer JSON
-  try {
-    const d = JSON.parse(
-      await fsp.readFile(path.join(dataDir, id + ".json"), "utf8"),
-    );
-    return { id, format: "json" as const, ...d };
-  } catch {}
-  // fall back to legacy markdown (client migrates it)
+export async function getDoc(
+  workspaceId: string,
+  dataDir: string,
+  docId: string,
+) {
+  let row = await prisma.doc.findUnique({
+    where: { workspaceId_docId: { workspaceId, docId } },
+  });
+  if (!row) row = await importFileDoc(workspaceId, dataDir, docId);
+  if (row && !row.deletedAt) {
+    return {
+      id: docId,
+      format: "json" as const,
+      title: row.title,
+      icon: row.icon,
+      cover: row.cover,
+      parent: row.parent,
+      orphaned: row.orphaned,
+      status: row.status,
+      blocks: rowBlocks(row),
+      comments: (row.comments ?? {}) as Record<string, unknown>,
+      created: iso(row.createdAt),
+      updated: iso(row.updatedAt),
+    };
+  }
+  // fall back to legacy markdown (client migrates it on first save)
   const { meta, body } = parseDoc(
-    await fsp.readFile(path.join(dataDir, id + ".md"), "utf8"),
+    await fsp.readFile(path.join(dataDir, docId + ".md"), "utf8"),
   );
   return {
-    id,
+    id: docId,
     format: "markdown" as const,
     title: meta.title || "Untitled",
     icon: meta.icon || "",
@@ -167,69 +336,145 @@ export interface SaveDocInput {
   created?: string;
   blocks?: Block[];
   comments?: Record<string, unknown>;
+  // Explicit opt-in to replace non-empty content with an empty document.
+  allowEmpty?: boolean;
 }
 
 export async function saveDoc(
+  workspaceId: string,
   dataDir: string,
-  id: string,
+  docId: string,
   doc: SaveDocInput,
 ) {
-  const jf = path.join(dataDir, id + ".json");
-  let created = doc.created || new Date().toISOString();
-  try {
-    const raw = await fsp.readFile(jf, "utf8");
-    const e = JSON.parse(raw);
-    if (e.created) created = e.created;
-    // First save in BlockNote format over a legacy-format doc: keep a
-    // one-time .json.bak so the original notes are never lost.
-    if (
-      Array.isArray(e.blocks) &&
-      e.blocks.length &&
-      !isBlockNoteDoc(e.blocks) &&
-      isBlockNoteDoc(doc.blocks)
-    ) {
-      try {
-        await fsp.writeFile(jf + ".bak", raw, { flag: "wx" });
-      } catch {}
-    }
-  } catch {
-    try {
-      const { meta } = parseDoc(
-        await fsp.readFile(path.join(dataDir, id + ".md"), "utf8"),
-      );
-      if (meta.created) created = meta.created;
-    } catch {}
+  const existing = await prisma.doc.findUnique({
+    where: { workspaceId_docId: { workspaceId, docId } },
+  });
+
+  let blocks = Array.isArray(doc.blocks) ? doc.blocks : [];
+  // Destructive-save guard: a live editor always has at least one block
+  // (an empty page is one empty paragraph), so an empty *array* replacing
+  // real content is a client bug (e.g. serializing a not-yet-loaded
+  // editor), not a user action. Keep the stored blocks, save meta only.
+  let blocksPreserved = false;
+  if (
+    existing &&
+    !existing.deletedAt &&
+    blocks.length === 0 &&
+    rowBlocks(existing).length > 0 &&
+    !doc.allowEmpty
+  ) {
+    blocks = rowBlocks(existing);
+    blocksPreserved = true;
   }
-  const updated = new Date().toISOString();
-  const out = {
-    title: doc.title || "Untitled",
+
+  const comments =
+    doc.comments && typeof doc.comments === "object" ? doc.comments : {};
+  const title = doc.title || "Untitled";
+  const now = new Date();
+  const createdAt =
+    existing?.createdAt || parseDate(doc.created) || now;
+
+  const contentChanged =
+    !existing ||
+    existing.title !== title ||
+    JSON.stringify(existing.blocks ?? []) !== JSON.stringify(blocks) ||
+    JSON.stringify(existing.comments ?? {}) !== JSON.stringify(comments);
+
+  const data = {
+    title,
     icon: doc.icon || "",
     cover: doc.cover || "",
     parent: doc.parent || "",
     orphaned: !!doc.orphaned,
     status: doc.status || "",
-    created,
-    updated,
-    blocks: Array.isArray(doc.blocks) ? doc.blocks : [],
-    comments:
-      doc.comments && typeof doc.comments === "object" ? doc.comments : {},
+    blocks: asJson(blocks),
+    comments: asJson(comments),
+    deletedAt: null,
+    updatedAt: now,
   };
-  await fsp.mkdir(dataDir, { recursive: true });
-  await fsp.writeFile(jf, JSON.stringify(out, null, 2), "utf8");
+
+  const row = await prisma.$transaction(async (tx) => {
+    const saved = existing
+      ? await tx.doc.update({ where: { id: existing.id }, data })
+      : await tx.doc.create({
+          data: { ...data, workspaceId, docId, createdAt },
+        });
+    if (contentChanged) {
+      await tx.docRevision.create({
+        data: {
+          docRef: saved.id,
+          title,
+          blocks: asJson(blocks),
+          comments: asJson(comments),
+          cause: existing ? "save" : "create",
+        },
+      });
+      // keep the newest REVISIONS_KEPT snapshots per doc
+      const overflow = await tx.docRevision.findMany({
+        where: { docRef: saved.id },
+        orderBy: { createdAt: "desc" },
+        skip: REVISIONS_KEPT,
+        take: 1,
+        select: { createdAt: true },
+      });
+      if (overflow.length) {
+        await tx.docRevision.deleteMany({
+          where: { docRef: saved.id, createdAt: { lte: overflow[0].createdAt } },
+        });
+      }
+    }
+    return saved;
+  });
+
+  await mirrorDoc(dataDir, docId, row);
   // migrated from legacy markdown — keep it as .bak so it isn't a live doc
   try {
     await fsp.rename(
-      path.join(dataDir, id + ".md"),
-      path.join(dataDir, id + ".md.bak"),
+      path.join(dataDir, docId + ".md"),
+      path.join(dataDir, docId + ".md.bak"),
     );
   } catch {}
-  return { id, title: out.title, icon: out.icon, updated, created };
+
+  return {
+    id: docId,
+    title: row.title,
+    icon: row.icon,
+    updated: iso(row.updatedAt)!,
+    created: iso(row.createdAt)!,
+    ...(blocksPreserved ? { blocksPreserved: true } : {}),
+  };
 }
 
-export async function deleteDoc(dataDir: string, id: string) {
+// Soft delete: the row is flagged, a final snapshot is appended, and only
+// the mirror files are removed from the folder. Revisions stay recoverable.
+export async function deleteDoc(
+  workspaceId: string,
+  dataDir: string,
+  docId: string,
+) {
+  const existing = await prisma.doc.findUnique({
+    where: { workspaceId_docId: { workspaceId, docId } },
+  });
+  if (existing && !existing.deletedAt) {
+    await prisma.$transaction([
+      prisma.docRevision.create({
+        data: {
+          docRef: existing.id,
+          title: existing.title,
+          blocks: asJson(existing.blocks ?? []),
+          comments: asJson(existing.comments ?? {}),
+          cause: "delete",
+        },
+      }),
+      prisma.doc.update({
+        where: { id: existing.id },
+        data: { deletedAt: new Date() },
+      }),
+    ]);
+  }
   for (const ext of [".json", ".md"]) {
     try {
-      await fsp.unlink(path.join(dataDir, id + ext));
+      await fsp.unlink(path.join(dataDir, docId + ext));
     } catch {}
   }
 }

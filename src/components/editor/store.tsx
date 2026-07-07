@@ -106,6 +106,7 @@ export function EditorProvider({
   const currentIdRef = React.useRef(currentId);
   const dirtyRef = React.useRef(false);
   const savingRef = React.useRef(false);
+  const failedRef = React.useRef(false); // a save has failed and a retry is pending
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   metaRef.current = meta;
   blocksRef.current = blocks;
@@ -123,9 +124,14 @@ export function EditorProvider({
 
   const buildDocFields = React.useCallback(() => {
     const m = metaRef.current;
-    const blocks = serializerRef.current
+    let blocks = serializerRef.current
       ? serializerRef.current()
       : blocksRef.current;
+    // A serializer reporting an empty document while we hold real blocks
+    // means the editor hasn't finished loading — never save that state.
+    if ((!blocks || !blocks.length) && blocksRef.current.length) {
+      blocks = blocksRef.current;
+    }
     blocksRef.current = blocks;
     return {
       title: m.title.trim() || "Untitled",
@@ -148,6 +154,8 @@ export function EditorProvider({
       try {
         await client.save(id, fields, keepalive);
         dirtyRef.current = false;
+        if (failedRef.current) toast.success("Back online — page saved");
+        failedRef.current = false;
         setSaveState("saved");
         setDocs((ds) =>
           ds.map((d) =>
@@ -164,9 +172,16 @@ export function EditorProvider({
         );
       } catch {
         setSaveState("error");
+        if (!failedRef.current) {
+          toast.error("Save failed — retrying in the background");
+        }
+        failedRef.current = true;
+        // dirtyRef is still true; retry until the save lands.
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => saveNow(), 3000);
       } finally {
         savingRef.current = false;
-        if (dirtyRef.current) queueSave();
+        if (dirtyRef.current && !failedRef.current) queueSave();
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

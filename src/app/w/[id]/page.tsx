@@ -44,7 +44,7 @@ export default async function WorkspacePage({
   await touchOpened(id);
   const reg = await readRegistry();
   const w = reg[id] || {};
-  const docs = await listDocs(dir);
+  const docs = await listDocs(id, dir);
 
   return (
     <>

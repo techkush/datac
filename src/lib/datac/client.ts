@@ -70,6 +70,13 @@ export interface WorkspaceInfo {
 
 const json = (r: Response) => r.json();
 
+// For writes: a 4xx/5xx response must reject so callers keep the doc dirty
+// and retry, instead of silently treating an error payload as a save.
+const okJson = (r: Response) => {
+  if (!r.ok) throw new Error(`request failed: ${r.status}`);
+  return r.json();
+};
+
 export function createClient(ws: string) {
   const API = `/api/w/${ws}`;
   return {
@@ -84,7 +91,7 @@ export function createClient(ws: string) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
-      }).then(json),
+      }).then(okJson),
     save: (
       id: string,
       fields: DocFields,
@@ -95,7 +102,7 @@ export function createClient(ws: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
         keepalive,
-      }).then(json),
+      }).then(okJson),
     remove: (id: string): Promise<{ ok: boolean }> =>
       fetch(`${API}/docs/${id}`, { method: "DELETE" }).then(json),
     listBoards: (): Promise<BoardSummary[]> =>
@@ -116,7 +123,7 @@ export function createClient(ws: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
         keepalive,
-      }).then(json),
+      }).then(okJson),
     removeBoard: (id: string): Promise<{ ok: boolean }> =>
       fetch(`${API}/boards/${id}`, { method: "DELETE" }).then(json),
     upload: (

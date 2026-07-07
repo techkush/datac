@@ -14,7 +14,7 @@ export async function GET(
   const dataDir = await workspaceDir(id);
   if (!dataDir)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
-  return NextResponse.json(await listDocs(dataDir));
+  return NextResponse.json(await listDocs(id, dataDir));
 }
 
 export async function POST(
@@ -27,7 +27,7 @@ export async function POST(
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   const body = await req.json().catch(() => ({}));
   const docId = crypto.randomBytes(8).toString("hex");
-  return NextResponse.json(await saveDoc(dataDir, docId, body), {
+  return NextResponse.json(await saveDoc(id, dataDir, docId, body), {
     status: 201,
   });
 }
