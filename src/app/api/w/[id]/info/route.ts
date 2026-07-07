@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { readRegistry, workspaceDir } from "@/lib/datac/registry";
+import {
+  readRegistry,
+  workspaceDir,
+  workspaceExists,
+} from "@/lib/datac/registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,9 +13,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const dataDir = await workspaceDir(id);
-  if (!dataDir)
+  if (!(await workspaceExists(id)))
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
+  const dataDir = await workspaceDir(id);
   const reg = await readRegistry();
   const w = reg[id] || {};
   return NextResponse.json({

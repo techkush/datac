@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { workspaceDir } from "@/lib/datac/registry";
+import { workspaceDir, workspaceExists } from "@/lib/datac/registry";
 import { safeId } from "@/lib/datac/docs";
 import { deleteBoard, getBoard, saveBoard } from "@/lib/datac/boards";
 
@@ -8,16 +8,17 @@ export const dynamic = "force-dynamic";
 
 async function resolve(params: Promise<{ id: string; boardId: string }>) {
   const { id, boardId } = await params;
-  const dataDir = await workspaceDir(id);
-  return { ws: id, dataDir, boardId: safeId(boardId) };
+  const exists = await workspaceExists(id);
+  const dataDir = exists ? await workspaceDir(id) : null;
+  return { ws: id, exists, dataDir, boardId: safeId(boardId) };
 }
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string; boardId: string }> },
 ) {
-  const { ws, dataDir, boardId } = await resolve(params);
-  if (!dataDir)
+  const { ws, exists, dataDir, boardId } = await resolve(params);
+  if (!exists)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   if (!boardId) return NextResponse.json({ error: "bad id" }, { status: 400 });
   const board = await getBoard(ws, dataDir, boardId);
@@ -30,8 +31,8 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string; boardId: string }> },
 ) {
-  const { ws, dataDir, boardId } = await resolve(params);
-  if (!dataDir)
+  const { ws, exists, dataDir, boardId } = await resolve(params);
+  if (!exists)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   if (!boardId) return NextResponse.json({ error: "bad id" }, { status: 400 });
   const body = await req.json().catch(() => ({}));
@@ -42,8 +43,8 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string; boardId: string }> },
 ) {
-  const { ws, dataDir, boardId } = await resolve(params);
-  if (!dataDir)
+  const { ws, exists, dataDir, boardId } = await resolve(params);
+  if (!exists)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   if (!boardId) return NextResponse.json({ error: "bad id" }, { status: 400 });
   await deleteBoard(ws, dataDir, boardId);

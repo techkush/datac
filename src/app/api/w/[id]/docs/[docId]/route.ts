@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { workspaceDir } from "@/lib/datac/registry";
+import { workspaceDir, workspaceExists } from "@/lib/datac/registry";
 import { deleteDoc, getDoc, safeId, saveDoc } from "@/lib/datac/docs";
 
 export const runtime = "nodejs";
@@ -7,16 +7,17 @@ export const dynamic = "force-dynamic";
 
 async function resolve(params: Promise<{ id: string; docId: string }>) {
   const { id, docId } = await params;
-  const dataDir = await workspaceDir(id);
-  return { ws: id, dataDir, docId: safeId(docId) };
+  const exists = await workspaceExists(id);
+  const dataDir = exists ? await workspaceDir(id) : null;
+  return { ws: id, exists, dataDir, docId: safeId(docId) };
 }
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string; docId: string }> },
 ) {
-  const { ws, dataDir, docId } = await resolve(params);
-  if (!dataDir)
+  const { ws, exists, dataDir, docId } = await resolve(params);
+  if (!exists)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   if (!docId) return NextResponse.json({ error: "bad id" }, { status: 400 });
   try {
@@ -30,8 +31,8 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string; docId: string }> },
 ) {
-  const { ws, dataDir, docId } = await resolve(params);
-  if (!dataDir)
+  const { ws, exists, dataDir, docId } = await resolve(params);
+  if (!exists)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   if (!docId) return NextResponse.json({ error: "bad id" }, { status: 400 });
   const body = await req.json().catch(() => ({}));
@@ -42,8 +43,8 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string; docId: string }> },
 ) {
-  const { ws, dataDir, docId } = await resolve(params);
-  if (!dataDir)
+  const { ws, exists, dataDir, docId } = await resolve(params);
+  if (!exists)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
   if (!docId) return NextResponse.json({ error: "bad id" }, { status: 400 });
   await deleteDoc(ws, dataDir, docId);

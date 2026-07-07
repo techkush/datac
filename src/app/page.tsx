@@ -31,7 +31,7 @@ export default async function Home() {
   // Board summaries per active workspace for the left-column panel.
   const boardWs: BoardsPanelWorkspace[] = await Promise.all(
     Object.entries(reg)
-      .filter(([, w]) => !w.trashed && w.dataDir)
+      .filter(([, w]) => !w.trashed)
       .sort((a, b) =>
         String(b[1].opened || "").localeCompare(String(a[1].opened || "")),
       )
@@ -39,7 +39,9 @@ export default async function Home() {
         id,
         title: w.title || "Untitled",
         color: w.color || "",
-        boards: await listBoards(id, w.dataDir as string).catch(() => []),
+        boards: await listBoards(id, (w.dataDir as string) ?? null).catch(
+          () => [],
+        ),
       })),
   );
 

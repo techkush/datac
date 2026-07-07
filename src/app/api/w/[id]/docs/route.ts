@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { workspaceDir } from "@/lib/datac/registry";
+import { workspaceDir, workspaceExists } from "@/lib/datac/registry";
 import { listDocs, saveDoc } from "@/lib/datac/docs";
 
 export const runtime = "nodejs";
@@ -11,9 +11,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const dataDir = await workspaceDir(id);
-  if (!dataDir)
+  if (!(await workspaceExists(id)))
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
+  const dataDir = await workspaceDir(id);
   return NextResponse.json(await listDocs(id, dataDir));
 }
 
@@ -22,9 +22,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const dataDir = await workspaceDir(id);
-  if (!dataDir)
+  if (!(await workspaceExists(id)))
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
+  const dataDir = await workspaceDir(id);
   const body = await req.json().catch(() => ({}));
   const docId = crypto.randomBytes(8).toString("hex");
   return NextResponse.json(await saveDoc(id, dataDir, docId, body), {

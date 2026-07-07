@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { readRegistry, touchOpened, workspaceDir } from "@/lib/datac/registry";
+import {
+  readRegistry,
+  touchOpened,
+  workspaceDir,
+  workspaceExists,
+} from "@/lib/datac/registry";
 import { listDocs } from "@/lib/datac/docs";
 import { EditorApp } from "@/components/editor/editor-app";
 import { FocusTracker } from "@/components/workspaces/focus-tracker";
@@ -25,8 +30,7 @@ export default async function WorkspacePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const dir = await workspaceDir(id);
-  if (!dir) {
+  if (!(await workspaceExists(id))) {
     return (
       <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
         <div className="text-4xl">🗂️</div>
@@ -42,6 +46,7 @@ export default async function WorkspacePage({
     );
   }
   await touchOpened(id);
+  const dir = await workspaceDir(id);
   const reg = await readRegistry();
   const w = reg[id] || {};
   const docs = await listDocs(id, dir);

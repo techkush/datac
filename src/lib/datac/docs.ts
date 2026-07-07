@@ -95,9 +95,10 @@ const parseDate = (s: string | undefined | null) => {
 // One-time adoption of a pre-DB <id>.json file into Postgres.
 async function importFileDoc(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   docId: string,
 ): Promise<Doc | null> {
+  if (!dataDir) return null; // cloud: no local folder to import from
   let d: FileDoc;
   try {
     d = JSON.parse(
@@ -148,7 +149,8 @@ async function importFileDoc(
 // Adopt every not-yet-imported <id>.json in the workspace folder. Docs the
 // DB already knows (even soft-deleted ones) are left alone so a deleted
 // page's stale mirror can't resurrect itself.
-async function importFileDocs(workspaceId: string, dataDir: string) {
+async function importFileDocs(workspaceId: string, dataDir: string | null) {
+  if (!dataDir) return; // cloud: nothing on local disk to adopt
   let entries: string[] = [];
   try {
     entries = await fsp.readdir(dataDir);
@@ -174,7 +176,8 @@ async function importFileDocs(workspaceId: string, dataDir: string) {
 }
 
 // Legacy markdown docs still on disk (served until first save migrates them).
-async function listLegacyMd(dataDir: string, skip: Set<string>) {
+async function listLegacyMd(dataDir: string | null, skip: Set<string>) {
+  if (!dataDir) return [];
   let entries: string[] = [];
   try {
     entries = await fsp.readdir(dataDir);
@@ -208,7 +211,7 @@ async function listLegacyMd(dataDir: string, skip: Set<string>) {
 
 export async function listDocs(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
 ): Promise<DocSummary[]> {
   await importFileDocs(workspaceId, dataDir);
   const rows = await prisma.doc.findMany({
@@ -240,7 +243,7 @@ export async function listDocs(
 
 export async function getDoc(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   docId: string,
 ) {
   let row = await prisma.doc.findUnique({
@@ -264,6 +267,7 @@ export async function getDoc(
     };
   }
   // fall back to legacy markdown (client migrates it on first save)
+  if (!dataDir) throw new Error("not found"); // cloud: not in Postgres, no disk
   const { meta, body } = parseDoc(
     await fsp.readFile(path.join(dataDir, docId + ".md"), "utf8"),
   );
@@ -297,7 +301,7 @@ export interface SaveDocInput {
 
 export async function saveDoc(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   docId: string,
   doc: SaveDocInput,
 ) {
@@ -394,12 +398,14 @@ export async function saveDoc(
   });
 
   // migrated from legacy markdown — keep it as .bak so it isn't a live doc
-  try {
-    await fsp.rename(
-      path.join(dataDir, docId + ".md"),
-      path.join(dataDir, docId + ".md.bak"),
-    );
-  } catch {}
+  if (dataDir) {
+    try {
+      await fsp.rename(
+        path.join(dataDir, docId + ".md"),
+        path.join(dataDir, docId + ".md.bak"),
+      );
+    } catch {}
+  }
 
   return {
     id: docId,
@@ -415,7 +421,7 @@ export async function saveDoc(
 // revisions stay recoverable. Any pre-DB file for the id is removed too.
 export async function deleteDoc(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   docId: string,
 ) {
   const existing = await prisma.doc.findUnique({
@@ -438,9 +444,11 @@ export async function deleteDoc(
       }),
     ]);
   }
-  for (const ext of [".json", ".md"]) {
-    try {
-      await fsp.unlink(path.join(dataDir, docId + ext));
-    } catch {}
+  if (dataDir) {
+    for (const ext of [".json", ".md"]) {
+      try {
+        await fsp.unlink(path.join(dataDir, docId + ext));
+      } catch {}
+    }
   }
 }

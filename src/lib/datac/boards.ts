@@ -84,9 +84,10 @@ const parseDate = (s: string | undefined | null) => {
 // One-time adoption of a pre-DB boards/<id>.json file into Postgres.
 async function importFileBoard(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   boardId: string,
 ): Promise<Board | null> {
+  if (!dataDir) return null; // cloud: no local folder to import from
   let b: BoardFile;
   try {
     b = JSON.parse(
@@ -131,7 +132,8 @@ async function importFileBoard(
 
 // Adopt every not-yet-imported board file. Boards the DB already knows
 // (even soft-deleted ones) are left alone.
-async function importFileBoards(workspaceId: string, dataDir: string) {
+async function importFileBoards(workspaceId: string, dataDir: string | null) {
+  if (!dataDir) return; // cloud: nothing on local disk to adopt
   let entries: string[] = [];
   try {
     entries = await fsp.readdir(boardsDir(dataDir));
@@ -158,7 +160,7 @@ async function importFileBoards(workspaceId: string, dataDir: string) {
 
 export async function listBoards(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
 ): Promise<BoardSummary[]> {
   await importFileBoards(workspaceId, dataDir);
   const rows = await prisma.board.findMany({
@@ -183,7 +185,7 @@ export async function listBoards(
 
 export async function getBoard(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   id: string,
 ): Promise<(BoardFile & { id: string }) | null> {
   if (!safeId(id)) return null;
@@ -212,7 +214,7 @@ export interface SaveBoardInput {
 
 export async function saveBoard(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   id: string,
   board: SaveBoardInput,
 ) {
@@ -310,7 +312,7 @@ export async function saveBoard(
 // resolves and are treated as roots by consumers.
 export async function deleteBoard(
   workspaceId: string,
-  dataDir: string,
+  dataDir: string | null,
   id: string,
 ) {
   const existing = await prisma.board.findUnique({
@@ -333,7 +335,9 @@ export async function deleteBoard(
       }),
     ]);
   }
-  try {
-    await fsp.unlink(path.join(boardsDir(dataDir), id + ".json"));
-  } catch {}
+  if (dataDir) {
+    try {
+      await fsp.unlink(path.join(boardsDir(dataDir), id + ".json"));
+    } catch {}
+  }
 }
