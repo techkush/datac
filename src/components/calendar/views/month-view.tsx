@@ -107,7 +107,7 @@ export function MonthView() {
                     event={ev}
                     color={eventColor(ev, categories)}
                     onDragStart={() => setDragId(ev.id)}
-                    onClick={() => openEdit(ev)}
+                    onEdit={() => openEdit(ev)}
                   />
                 ))}
                 {extra > 0 && (
@@ -134,12 +134,12 @@ function EventChip({
   event,
   color,
   onDragStart,
-  onClick,
+  onEdit,
 }: {
   event: CalendarEvent;
   color: string;
   onDragStart: () => void;
-  onClick: () => void;
+  onEdit: () => void;
 }) {
   const done = event.status === "COMPLETED";
   const cancelled = event.status === "CANCELLED";
@@ -148,14 +148,17 @@ function EventChip({
     <button
       draggable
       onDragStart={onDragStart}
-      onClick={onClick}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onEdit();
+      }}
       className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] leading-tight"
       style={{
         background: event.allDay ? color : `${color}22`,
         color: event.allDay ? "#fff" : undefined,
         border: event.isTimeBlock ? `1px dashed ${color}` : undefined,
       }}
-      title={event.isTimeBlock ? `${event.title} (time block)` : event.title}
+      title={`${event.title}${event.isTimeBlock ? " (time block)" : ""} — drag to move, double-click to edit`}
     >
       {!event.allDay && (
         <span

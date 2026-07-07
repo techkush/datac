@@ -133,9 +133,10 @@ export function TimeGridView({ days }: { days: 1 | 7 }) {
               {allDayEventsOnDay(visibleEvents, day).map((ev) => (
                 <button
                   key={ev.id}
-                  onClick={() => openEdit(ev)}
+                  onDoubleClick={() => openEdit(ev)}
                   className="w-full truncate rounded px-1 text-left text-[11px] text-white"
                   style={{ background: eventColor(ev, categories) }}
+                  title={`${ev.title} — double-click to edit`}
                 >
                   {ev.title}
                 </button>
@@ -197,9 +198,9 @@ export function TimeGridView({ days }: { days: 1 | 7 }) {
                   return (
                     <button
                       key={p.event.id}
-                      onClick={(e) => {
+                      onDoubleClick={(e) => {
                         e.stopPropagation();
-                        if (!dragging) openEdit(p.event);
+                        openEdit(p.event);
                       }}
                       onPointerDown={(e) => {
                         e.stopPropagation();
@@ -229,7 +230,7 @@ export function TimeGridView({ days }: { days: 1 | 7 }) {
                         cursor: "grab",
                         touchAction: "none",
                       }}
-                      title={p.event.title}
+                      title={`${p.event.title} — drag to move, double-click to edit`}
                     >
                       <div
                         className="truncate font-medium"
