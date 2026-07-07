@@ -200,7 +200,7 @@ export function EventDialog() {
       <Sheet open={dialog.open} onOpenChange={(o) => !o && closeDialog()}>
         <SheetContent
           side="right"
-          className="flex w-full flex-col gap-0 p-0 sm:max-w-lg"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
         >
           <SheetHeader className="border-b">
             <SheetTitle>{editing ? "Edit event" : "New event"}</SheetTitle>
