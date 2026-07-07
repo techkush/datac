@@ -192,8 +192,7 @@ export function EventDialog() {
 
   const onDelete = () => {
     if (!editing) return;
-    if (isRecurring) setConfirmDelete(true);
-    else deleteEvent(editing.id);
+    setConfirmDelete(true);
   };
 
   return (
@@ -449,27 +448,42 @@ export function EventDialog() {
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete recurring event</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isRecurring
+                ? "Delete recurring event"
+                : `Delete “${editing?.title || "this event"}”?`}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This event repeats. Choose what to delete.
+              {isRecurring
+                ? "This event repeats. Choose what to delete."
+                : "This event will be permanently deleted. This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="sm:justify-between">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <div className="flex gap-2">
+            {isRecurring ? (
+              <div className="flex gap-2">
+                <AlertDialogAction
+                  className="bg-destructive text-white hover:bg-destructive/90"
+                  onClick={() => editing && deleteEvent(editing.id, "occurrence")}
+                >
+                  This event
+                </AlertDialogAction>
+                <AlertDialogAction
+                  className="bg-destructive text-white hover:bg-destructive/90"
+                  onClick={() => editing && deleteEvent(editing.id, "all")}
+                >
+                  All events
+                </AlertDialogAction>
+              </div>
+            ) : (
               <AlertDialogAction
                 className="bg-destructive text-white hover:bg-destructive/90"
-                onClick={() => editing && deleteEvent(editing.id, "occurrence")}
+                onClick={() => editing && deleteEvent(editing.id)}
               >
-                This event
+                Delete
               </AlertDialogAction>
-              <AlertDialogAction
-                className="bg-destructive text-white hover:bg-destructive/90"
-                onClick={() => editing && deleteEvent(editing.id, "all")}
-              >
-                All events
-              </AlertDialogAction>
-            </div>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

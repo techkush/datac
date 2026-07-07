@@ -36,6 +36,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -51,11 +61,13 @@ import { ReportsDialog } from "./reports-dialog";
 function CategoryEditDialog({
   category,
   onClose,
+  onRequestDelete,
 }: {
   category: Category | null;
   onClose: () => void;
+  onRequestDelete: (c: Category) => void;
 }) {
-  const { editCategory, removeCategory } = useCalendar();
+  const { editCategory } = useCalendar();
   const [name, setName] = React.useState("");
   const [color, setColor] = React.useState<string>(CALENDAR_COLORS[7]);
 
@@ -101,8 +113,8 @@ function CategoryEditDialog({
           <Button
             variant="ghost"
             className="text-destructive"
-            onClick={async () => {
-              if (category) await removeCategory(category.id);
+            onClick={() => {
+              if (category) onRequestDelete(category);
               onClose();
             }}
           >
@@ -240,6 +252,7 @@ export function CalendarSidebar() {
     useCalendar();
   const [reportsOpen, setReportsOpen] = React.useState(false);
   const [editCat, setEditCat] = React.useState<Category | null>(null);
+  const [deleteCat, setDeleteCat] = React.useState<Category | null>(null);
 
   return (
     <aside className="bg-sidebar flex w-64 shrink-0 flex-col border-r">
@@ -325,7 +338,7 @@ export function CalendarSidebar() {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
-                      onClick={() => removeCategory(c.id)}
+                      onClick={() => setDeleteCat(c)}
                     >
                       <Trash2 /> Delete
                     </DropdownMenuItem>
@@ -337,7 +350,40 @@ export function CalendarSidebar() {
         </ul>
       </div>
 
-      <CategoryEditDialog category={editCat} onClose={() => setEditCat(null)} />
+      <CategoryEditDialog
+        category={editCat}
+        onClose={() => setEditCat(null)}
+        onRequestDelete={(c) => setDeleteCat(c)}
+      />
+
+      <AlertDialog
+        open={!!deleteCat}
+        onOpenChange={(o) => !o && setDeleteCat(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete “{deleteCat?.name}”?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Events in this category won’t be deleted — they’ll just become
+              uncategorized.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteCat) removeCategory(deleteCat.id);
+                setDeleteCat(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex items-center gap-2 border-t px-3 py-2">
         <div className="min-w-0 flex-1">
