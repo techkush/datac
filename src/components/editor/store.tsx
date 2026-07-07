@@ -33,6 +33,7 @@ interface EditorContextValue {
   blocks: Block[];
   comments: Record<string, CommentEntry[]>;
   saveState: SaveState;
+  booting: boolean; // initial page open still in flight
 
   refreshDocs: () => Promise<void>;
   openDoc: (id: string) => Promise<void>;
@@ -98,6 +99,7 @@ export function EditorProvider({
     Record<string, CommentEntry[]>
   >({});
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
+  const [booting, setBooting] = React.useState(true);
 
   // Live refs so the debounced save always reads the latest values.
   const metaRef = React.useRef(meta);
@@ -489,7 +491,7 @@ export function EditorProvider({
     // Deep link: ?doc=<id> opens that page directly.
     const wanted = new URLSearchParams(window.location.search).get("doc");
     if (wanted && initialDocs.some((d) => d.id === wanted)) {
-      openDoc(wanted);
+      openDoc(wanted).finally(() => setBooting(false));
       return;
     }
     const roots = initialDocs
@@ -498,7 +500,8 @@ export function EditorProvider({
         String(a.created || "").localeCompare(String(b.created || "")),
       );
     const first = roots[0] || initialDocs[0];
-    if (first) openDoc(first.id);
+    if (first) openDoc(first.id).finally(() => setBooting(false));
+    else setBooting(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -512,6 +515,7 @@ export function EditorProvider({
     blocks,
     comments,
     saveState,
+    booting,
     refreshDocs,
     openDoc,
     newDoc,

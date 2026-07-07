@@ -13,11 +13,20 @@ const BlockNoteEditor = dynamic(
   () => import("./blocknote-editor").then((m) => m.BlockNoteEditor),
   { ssr: false },
 );
-import { FilePlus2 } from "lucide-react";
+import { FilePlus2, Loader2 } from "lucide-react";
 import type { DocSummary } from "@/lib/datac/types";
 
 function DocArea() {
-  const { currentId, newDoc } = useEditor();
+  const { currentId, newDoc, booting } = useEditor();
+  if (!currentId && booting) {
+    // First page is still being fetched — don't flash the empty state.
+    return (
+      <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 p-10">
+        <Loader2 className="size-6 animate-spin" />
+        <p className="text-sm">Loading your pages…</p>
+      </div>
+    );
+  }
   if (!currentId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
