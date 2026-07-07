@@ -39,7 +39,7 @@ export default async function Home() {
         id,
         title: w.title || "Untitled",
         color: w.color || "",
-        boards: await listBoards(w.dataDir as string).catch(() => []),
+        boards: await listBoards(id, w.dataDir as string).catch(() => []),
       })),
   );
 

@@ -15,7 +15,7 @@ export async function generateMetadata({
 }) {
   const { id, boardId } = await params;
   const dir = await workspaceDir(id);
-  const board = dir ? await getBoard(dir, boardId) : null;
+  const board = dir ? await getBoard(id, dir, boardId) : null;
   return { title: board ? `DataC | ${board.name}` : "DataC Workspace" };
 }
 
@@ -26,7 +26,7 @@ export default async function BoardPage({
 }) {
   const { id, boardId } = await params;
   const dir = await workspaceDir(id);
-  const board = dir ? await getBoard(dir, boardId) : null;
+  const board = dir ? await getBoard(id, dir, boardId) : null;
   if (!dir || !board) {
     return (
       <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
@@ -48,7 +48,7 @@ export default async function BoardPage({
   await touchOpened(id);
   const reg = await readRegistry();
   const w = reg[id] || {};
-  const boards = await listBoards(dir);
+  const boards = await listBoards(id, dir);
 
   return (
     <>

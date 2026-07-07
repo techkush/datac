@@ -14,7 +14,7 @@ export async function GET(
   const dataDir = await workspaceDir(id);
   if (!dataDir)
     return NextResponse.json({ error: "unknown workspace" }, { status: 404 });
-  return NextResponse.json(await listBoards(dataDir));
+  return NextResponse.json(await listBoards(id, dataDir));
 }
 
 export async function POST(
@@ -28,7 +28,7 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const boardId = crypto.randomBytes(8).toString("hex");
   return NextResponse.json(
-    await saveBoard(dataDir, boardId, {
+    await saveBoard(id, dataDir, boardId, {
       name: typeof body.name === "string" ? body.name : "Untitled board",
       parent: typeof body.parent === "string" ? body.parent : "",
       cards: [],
