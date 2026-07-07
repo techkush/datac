@@ -153,9 +153,12 @@ export function EditorProvider({
       if (saveTimer.current) clearTimeout(saveTimer.current);
       savingRef.current = true;
       const fields = buildDocFields();
+      // Clear dirty *before* the request: an edit that races the in-flight
+      // save re-sets it to true and gets requeued in finally. Clearing it
+      // after a resolved await would clobber that newer edit and lose it.
+      dirtyRef.current = false;
       try {
         await client.save(id, fields, keepalive);
-        dirtyRef.current = false;
         if (failedRef.current) toast.success("Back online — page saved");
         failedRef.current = false;
         setSaveState("saved");
@@ -173,12 +176,12 @@ export function EditorProvider({
           ),
         );
       } catch {
+        dirtyRef.current = true; // restore so the retry re-sends this edit
         setSaveState("error");
         if (!failedRef.current) {
           toast.error("Save failed — retrying in the background");
         }
         failedRef.current = true;
-        // dirtyRef is still true; retry until the save lands.
         if (saveTimer.current) clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(() => saveNow(), 3000);
       } finally {

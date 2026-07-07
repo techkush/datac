@@ -219,6 +219,21 @@ export async function saveBoard(
   const existing = await prisma.board.findUnique({
     where: { workspaceId_boardId: { workspaceId, boardId: id } },
   });
+
+  // A late/stale save that lands after the board was deleted must not
+  // resurrect it. There is no restore path through saveBoard, so a
+  // soft-deleted row is left untouched.
+  if (existing?.deletedAt) {
+    return {
+      id,
+      name: existing.name,
+      parent: existing.parent,
+      updated: iso(existing.updatedAt)!,
+      created: iso(existing.createdAt)!,
+      deleted: true,
+    };
+  }
+
   const viewport =
     board.viewport ?? (existing?.viewport as unknown as Camera | null);
   const now = new Date();
@@ -243,7 +258,6 @@ export async function saveBoard(
     viewport: viewport ? asJson(viewport) : undefined,
     cards: asJson(cards),
     arrows: asJson(arrows),
-    deletedAt: null,
     updatedAt: now,
   };
 

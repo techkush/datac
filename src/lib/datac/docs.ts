@@ -305,6 +305,20 @@ export async function saveDoc(
     where: { workspaceId_docId: { workspaceId, docId } },
   });
 
+  // A late/stale save (retry timer, another tab, an unload flush) that lands
+  // after the page was deleted must not resurrect it. There is no restore
+  // path through saveDoc, so a soft-deleted row is left untouched.
+  if (existing?.deletedAt) {
+    return {
+      id: docId,
+      title: existing.title,
+      icon: existing.icon,
+      updated: iso(existing.updatedAt)!,
+      created: iso(existing.createdAt)!,
+      deleted: true,
+    };
+  }
+
   let blocks = Array.isArray(doc.blocks) ? doc.blocks : [];
   // Destructive-save guard: a live editor always has at least one block
   // (an empty page is one empty paragraph), so an empty *array* replacing
@@ -313,7 +327,6 @@ export async function saveDoc(
   let blocksPreserved = false;
   if (
     existing &&
-    !existing.deletedAt &&
     blocks.length === 0 &&
     rowBlocks(existing).length > 0 &&
     !doc.allowEmpty
@@ -344,7 +357,6 @@ export async function saveDoc(
     status: doc.status || "",
     blocks: asJson(blocks),
     comments: asJson(comments),
-    deletedAt: null,
     updatedAt: now,
   };
 
