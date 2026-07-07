@@ -3,6 +3,7 @@
 import * as React from "react";
 import { format } from "date-fns";
 import { Play, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -151,17 +152,39 @@ export function EventDialog() {
       return next;
     });
 
+  // Reformat the date/time fields when switching all-day on/off so the input
+  // value always matches its type (date vs datetime-local) and stays valid.
+  const toggleAllDay = (v: boolean) => {
+    setAllDay(v);
+    if (v) {
+      setStart((s) => s.slice(0, 10));
+      setEnd((e) => (e || start).slice(0, 10));
+    } else {
+      setStart((s) => (s.length <= 10 ? `${s.slice(0, 10)}T09:00` : s));
+      setEnd((e) => (e.length <= 10 ? `${e.slice(0, 10)}T10:00` : e));
+    }
+  };
+
   const buildInput = (): EventInput | null => {
     if (!title.trim()) return null;
-    let startISO: string;
-    let endISO: string;
+    // `start`/`end` may hold a datetime-local ("...T09:00") or a date
+    // ("yyyy-MM-dd") string depending on the all-day toggle. Normalize both.
+    const datePart = (s: string) => s.slice(0, 10);
+    let startDate: Date;
+    let endDate: Date;
     if (allDay) {
-      startISO = new Date(`${start}T00:00`).toISOString();
-      endISO = new Date(`${end || start}T23:59`).toISOString();
+      startDate = new Date(`${datePart(start)}T00:00`);
+      endDate = new Date(`${datePart(end || start)}T23:59`);
     } else {
-      startISO = new Date(start).toISOString();
-      endISO = new Date(end).toISOString();
+      startDate = new Date(start);
+      endDate = new Date(end);
     }
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      toast.error("Please set a valid start and end time");
+      return null;
+    }
+    const startISO = startDate.toISOString();
+    const endISO = endDate.toISOString();
     const rem = [...reminders].sort((a, b) => a - b);
     return {
       title: title.trim(),
@@ -234,7 +257,7 @@ export function EventDialog() {
             <Label htmlFor="allday" className="text-sm">
               All day
             </Label>
-            <Switch id="allday" checked={allDay} onCheckedChange={setAllDay} />
+            <Switch id="allday" checked={allDay} onCheckedChange={toggleAllDay} />
           </div>
 
           <div className="grid grid-cols-2 gap-2">

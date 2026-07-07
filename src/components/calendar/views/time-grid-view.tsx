@@ -109,11 +109,14 @@ export function TimeGridView({ days }: { days: 1 | 7 }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header: day names + all-day lane */}
-      <div
-        className="grid shrink-0 border-b"
-        style={{ gridTemplateColumns: `56px repeat(${cols.length}, 1fr)` }}
-      >
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {/* Header: sticky day names + all-day lane. Kept inside the same scroll
+            container as the grid so the vertical scrollbar shrinks both equally
+            and the columns stay aligned. */}
+        <div
+          className="bg-background sticky top-0 z-40 grid border-b"
+          style={{ gridTemplateColumns: `56px repeat(${cols.length}, 1fr)` }}
+        >
         <div className="border-r" />
         {cols.map((day) => (
           <div key={day.toISOString()} className="border-r px-1 py-1 text-center">
@@ -142,8 +145,7 @@ export function TimeGridView({ days }: { days: 1 | 7 }) {
         ))}
       </div>
 
-      {/* Scrollable time grid */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {/* time grid */}
         <div
           ref={gridRef}
           className="relative grid"
