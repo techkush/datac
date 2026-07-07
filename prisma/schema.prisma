@@ -277,9 +277,9 @@ model ActivityLog {
 // ---------------------------------------------------------------------------
 // Notes documents (dataC workspaces)
 // ---------------------------------------------------------------------------
-// Postgres is the system of record for page content. Each save also mirrors
-// a JSON snapshot back into the workspace's dataC/ folder so the folder plus
-// open.dc remains a complete, portable local copy of the notes.
+// Postgres is the system of record for page content. The workspace's dataC/
+// folder keeps only uploads (files/) and the open.dc manifest; pre-DB JSON
+// files are imported once on first access.
 
 model Doc {
   id          String    @id @default(cuid())
@@ -320,9 +320,8 @@ model DocRevision {
   @@map("doc_revisions")
 }
 
-// Whiteboards, same pattern as Doc: Postgres is the record, every
-// content-changing save appends a revision, and a JSON mirror is written
-// back to <dataC>/boards/<id>.json.
+// Whiteboards, same pattern as Doc: Postgres is the record and every
+// content-changing save appends a revision.
 
 model Board {
   id          String    @id @default(cuid())

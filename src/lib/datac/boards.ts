@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma, Board } from "@/generated/prisma";
 import { safeId } from "./docs";
@@ -18,9 +17,9 @@ export const boardsDir = (dataDir: string) => path.join(dataDir, "boards");
 
 /* ---- board ops (Postgres system of record) -------------------------------
  * Boards live in the `boards` table keyed by (workspaceId, boardId); every
- * content-changing save appends a BoardRevision snapshot and mirrors a JSON
- * file to <dataC>/boards/<id>.json, same as documents. Pre-existing board
- * files are imported into the DB on first access. */
+ * content-changing save appends a BoardRevision snapshot, same as
+ * documents. Pre-DB <dataC>/boards/*.json files are imported on first
+ * access; nothing is written back to the folder. */
 
 const REVISIONS_KEPT = 100;
 
@@ -75,20 +74,6 @@ function rowToMirror(row: Board): BoardFile {
     cards: rowCards(row),
     arrows: rowArrows(row),
   };
-}
-
-// Best-effort atomic mirror write; the DB commit has already succeeded.
-async function mirrorBoard(dataDir: string, boardId: string, row: Board) {
-  try {
-    const dir = boardsDir(dataDir);
-    await fsp.mkdir(dir, { recursive: true });
-    const tmp = path.join(
-      dir,
-      `.${boardId}.${crypto.randomBytes(4).toString("hex")}.tmp`,
-    );
-    await fsp.writeFile(tmp, JSON.stringify(rowToMirror(row), null, 2), "utf8");
-    await fsp.rename(tmp, path.join(dir, boardId + ".json"));
-  } catch {}
 }
 
 const parseDate = (s: string | undefined | null) => {
@@ -297,7 +282,6 @@ export async function saveBoard(
     return saved;
   });
 
-  await mirrorBoard(dataDir, id, row);
   return {
     id,
     name: row.name,

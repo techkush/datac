@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma, Doc } from "@/generated/prisma";
 import type { Block, DocSummary } from "./types";
@@ -64,60 +63,16 @@ export function collectPageIds(blocks: Block[] | undefined, out: string[]) {
 /* ---- document ops (Postgres system of record) ---------------------------
  * Docs live in the `docs` table keyed by (workspaceId, docId); every
  * content-changing save appends a DocRevision snapshot, so no save can
- * destroy a page irrecoverably. Each save also mirrors a <id>.json file
- * into the workspace's dataC/ folder, keeping the folder + open.dc a
- * complete portable local copy. Pre-existing <id>.json files are imported
- * into the DB on first access; legacy <id>.md files are still served from
- * disk until the client migrates them with a save. */
+ * destroy a page irrecoverably. The dataC/ folder keeps only uploads
+ * (files/) and open.dc: pre-DB <id>.json files are imported into the DB
+ * on first access, and legacy <id>.md files are still served from disk
+ * until the client migrates them with a save. */
 
 const REVISIONS_KEPT = 100;
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 const asJson = (v: unknown) => v as Prisma.InputJsonValue;
 const rowBlocks = (row: Doc) => (row.blocks ?? []) as unknown as Block[];
-
-interface MirrorShape {
-  title: string;
-  icon: string;
-  cover: string;
-  parent: string;
-  orphaned: boolean;
-  status: string;
-  created: string | null;
-  updated: string | null;
-  blocks: unknown;
-  comments: unknown;
-}
-
-function rowToMirror(row: Doc): MirrorShape {
-  return {
-    title: row.title,
-    icon: row.icon,
-    cover: row.cover,
-    parent: row.parent,
-    orphaned: row.orphaned,
-    status: row.status,
-    created: iso(row.createdAt),
-    updated: iso(row.updatedAt),
-    blocks: row.blocks ?? [],
-    comments: row.comments ?? {},
-  };
-}
-
-// Best-effort atomic mirror write (temp file + rename): the DB commit has
-// already succeeded, so a mirror failure must never fail the save.
-async function mirrorDoc(dataDir: string, docId: string, row: Doc) {
-  try {
-    await fsp.mkdir(dataDir, { recursive: true });
-    const file = path.join(dataDir, docId + ".json");
-    const tmp = path.join(
-      dataDir,
-      `.${docId}.${crypto.randomBytes(4).toString("hex")}.tmp`,
-    );
-    await fsp.writeFile(tmp, JSON.stringify(rowToMirror(row), null, 2), "utf8");
-    await fsp.rename(tmp, file);
-  } catch {}
-}
 
 interface FileDoc {
   title?: string;
@@ -426,7 +381,6 @@ export async function saveDoc(
     return saved;
   });
 
-  await mirrorDoc(dataDir, docId, row);
   // migrated from legacy markdown — keep it as .bak so it isn't a live doc
   try {
     await fsp.rename(
@@ -445,8 +399,8 @@ export async function saveDoc(
   };
 }
 
-// Soft delete: the row is flagged, a final snapshot is appended, and only
-// the mirror files are removed from the folder. Revisions stay recoverable.
+// Soft delete: the row is flagged and a final snapshot is appended, so
+// revisions stay recoverable. Any pre-DB file for the id is removed too.
 export async function deleteDoc(
   workspaceId: string,
   dataDir: string,
