@@ -546,10 +546,24 @@ function CommentOverlay({
   const [resizeTick, setResizeTick] = React.useState(0);
 
   React.useEffect(() => {
-    const onResize = () => setResizeTick((t) => t + 1);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    const bump = () => setResizeTick((t) => t + 1);
+    window.addEventListener("resize", bump);
+    // The BlockNote editor mounts and renders its blocks asynchronously
+    // (dynamic import, then ProseMirror init). Observing the wrapper's size
+    // re-measures icon positions the moment the commented blocks appear, so
+    // the icons show reliably on a fresh page load / refresh — not just a
+    // fixed number of frames after the comments data arrives.
+    const el = wrapperRef.current;
+    const ro =
+      el && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(bump)
+        : null;
+    if (el && ro) ro.observe(el);
+    return () => {
+      window.removeEventListener("resize", bump);
+      ro?.disconnect();
+    };
+  }, [wrapperRef]);
 
   const ids = React.useMemo(
     () => Object.keys(comments).filter((id) => comments[id]?.length),
