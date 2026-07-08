@@ -20,6 +20,10 @@ import {
   SideMenu,
   DragHandleMenu,
   getDefaultReactSlashMenuItems,
+  FormattingToolbar,
+  FormattingToolbarController,
+  getFormattingToolbarItems,
+  TextAlignButton,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { offset, flip, shift, size } from "@floating-ui/react";
@@ -411,8 +415,34 @@ export function BlockNoteEditor() {
         onChange={handleChange}
         slashMenu={false}
         sideMenu={false}
+        formattingToolbar={false}
         className="datac-blocknote"
       >
+        {/* Default formatting toolbar plus a Justify alignment button (the
+            built-in toolbar only offers left/center/right). */}
+        <FormattingToolbarController
+          formattingToolbar={() => {
+            const items = getFormattingToolbarItems();
+            const rightIdx = items.findIndex(
+              (el) => el.key === "textAlignRightButton",
+            );
+            const justify = (
+              <TextAlignButton
+                key="textAlignJustifyButton"
+                textAlignment="justify"
+              />
+            );
+            const withJustify =
+              rightIdx >= 0
+                ? [
+                    ...items.slice(0, rightIdx + 1),
+                    justify,
+                    ...items.slice(rightIdx + 1),
+                  ]
+                : [...items, justify];
+            return <FormattingToolbar>{withJustify}</FormattingToolbar>;
+          }}
+        />
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={getSlashItems}
