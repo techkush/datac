@@ -465,7 +465,7 @@ export function BlockNoteEditor() {
       </div>
 
       <LatexDialog
-        key={mathTarget ? (mathTarget.blockId ?? "insert") : "closed"}
+        key={mathTarget ? (mathTarget.blockId ?? "insert") : "math-closed"}
         open={!!mathTarget}
         mode={mathTarget?.blockId ? "edit" : "insert"}
         initialTex={mathTarget?.tex || ""}
@@ -477,7 +477,7 @@ export function BlockNoteEditor() {
         onClose={() => setCommentsTarget(null)}
       />
       <PagePickerDialog
-        key={pagePickerOpen ? "open" : "closed"}
+        key={pagePickerOpen ? "open" : "picker-closed"}
         open={pagePickerOpen}
         onClose={() => setPagePickerOpen(false)}
         onPick={insertPageLink}
