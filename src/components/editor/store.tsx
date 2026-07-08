@@ -13,7 +13,7 @@ import {
   type BnBlock,
 } from "@/lib/datac/blocknote-convert";
 
-export type SaveState = "idle" | "unsaved" | "saving" | "saved" | "error";
+export type SaveState = "idle" | "saving" | "saved" | "error";
 
 export interface DocMeta {
   title: string;
@@ -193,13 +193,16 @@ export function EditorProvider({
     [client, buildDocFields],
   );
 
-  // Edits just mark the doc dirty; the 60s autosave interval (or the manual
-  // Save button / tab-close flush) is what actually writes to the server.
+  // Autosave: every content change debounces a save (~0.7s after you stop).
+  // The database is local, so frequent saves are cheap; tab close/hide and
+  // page switches also flush.
   const queueSave = React.useCallback(() => {
     if (!currentIdRef.current) return;
     dirtyRef.current = true;
-    if (!savingRef.current) setSaveState("unsaved");
-  }, []);
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveNow(), 700);
+  }, [saveNow]);
 
   const setMeta = React.useCallback(
     (patch: Partial<DocMeta>) => {
@@ -467,15 +470,6 @@ export function EditorProvider({
     },
     [client, docs, saveNow],
   );
-
-  // Autosave: a single 60-second interval writes any pending changes. Manual
-  // saves (the Save button), tab close/hide, and switching pages also flush.
-  React.useEffect(() => {
-    const iv = setInterval(() => {
-      if (dirtyRef.current && !savingRef.current) saveNow();
-    }, 60_000);
-    return () => clearInterval(iv);
-  }, [saveNow]);
 
   // Save on unload / tab hide.
   React.useEffect(() => {

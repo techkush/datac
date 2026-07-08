@@ -2,13 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import {
-  ChevronDown,
-  Download,
-  LayoutDashboard,
-  Plus,
-  Save,
-} from "lucide-react";
+import { ChevronDown, Download, LayoutDashboard, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { BoardSummary } from "@/lib/datac/board-types";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -30,20 +24,16 @@ function SaveStatus({ state }: { state: string }) {
       ? "Saving…"
       : state === "error"
         ? "Save failed"
-        : state === "unsaved"
-          ? "Unsaved changes"
-          : "Saved";
+        : "Saved";
   return (
     <span
       className={cn(
         "text-xs tabular-nums",
         state === "error"
           ? "text-destructive"
-          : state === "unsaved"
-            ? "text-amber-600 dark:text-amber-500"
-            : state === "saving"
-              ? "text-muted-foreground"
-              : "text-muted-foreground/70",
+          : state === "saving"
+            ? "text-muted-foreground"
+            : "text-muted-foreground/70",
       )}
     >
       {label}
@@ -115,17 +105,8 @@ function BoardsMenu() {
 }
 
 export function Topbar() {
-  const {
-    docs,
-    currentId,
-    meta,
-    saveState,
-    openDoc,
-    setMeta,
-    exportMarkdown,
-    saveNow,
-  } = useEditor();
-  const hasPending = saveState === "unsaved" || saveState === "error";
+  const { docs, currentId, meta, saveState, openDoc, setMeta, exportMarkdown } =
+    useEditor();
 
   // breadcrumb: walk up the parent chain
   const chain: { id: string; title: string }[] = [];
@@ -206,15 +187,6 @@ export function Topbar() {
             </Button>
             <Separator orientation="vertical" className="!h-5" />
             <SaveStatus state={saveState} />
-            <Button
-              size="sm"
-              className="h-7 gap-1.5"
-              onClick={() => saveNow()}
-              disabled={!hasPending}
-              title="Save now (autosaves every 60s)"
-            >
-              <Save className="size-4" /> Save
-            </Button>
           </>
         )}
       </div>
