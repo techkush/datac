@@ -47,21 +47,6 @@ function ping() {
   });
 }
 
-// Mirror this workspace into the Prisma cloud registry via the daemon, so it
-// exists in both stores. Best-effort — a failure never blocks local setup.
-function registerCloud(id, title) {
-  return new Promise((resolve) => {
-    const data = JSON.stringify({ id, title });
-    const req = http.request(`${BASE}/api/workspaces`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-    }, (res) => { res.resume(); resolve(res.statusCode >= 200 && res.statusCode < 300); });
-    req.on('error', () => resolve(false));
-    req.setTimeout(4000, () => { req.destroy(); resolve(false); });
-    req.write(data); req.end();
-  });
-}
-
 async function daemonRunning() {
   if (await ping()) return true;
   const info = readJSON(DAEMON_FILE, null);
@@ -232,7 +217,6 @@ async function cmdInit(args) {
   console.log('  ' + C.dim('manifest ') + 'open.dc');
 
   if (!(await startDaemon())) { console.error(C.red('✗'), 'could not start the datac daemon'); process.exit(1); }
-  await registerCloud(id, title);
   console.log('  ' + C.dim('opening ') + C.cyan(url));
   openInBrowser(url);
 }
@@ -391,7 +375,6 @@ async function cmdSetup(args) {
   console.log(C.green('✓'), `workspace ${C.bold(name)} ready`);
   console.log('  ' + C.dim('notes  ') + path.relative(cwd, dataDir) + '/');
   if (!(await startDaemon())) { console.error(C.red('✗'), 'could not start the datac daemon'); process.exit(1); }
-  await registerCloud(id, name);
   console.log('  ' + C.dim('opening ') + C.cyan(url));
   openInBrowser(url);
 }
@@ -420,7 +403,6 @@ async function cmdOpen(args) {
   saveRegistry(reg);
 
   if (!(await startDaemon())) { console.error(C.red('✗'), 'could not start the datac daemon'); process.exit(1); }
-  await registerCloud(manifest.id, manifest.title || 'Untitled');
   const url = `${BASE}/w/${manifest.id}`;
   console.log(C.green('✓'), 'opening', C.bold(manifest.title || 'workspace'), C.dim(url));
   openInBrowser(url);

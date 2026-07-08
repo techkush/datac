@@ -1,10 +1,5 @@
 import Link from "next/link";
-import {
-  readRegistry,
-  touchOpened,
-  workspaceDir,
-  workspaceExists,
-} from "@/lib/datac/registry";
+import { readRegistry, touchOpened, workspaceDir } from "@/lib/datac/registry";
 import { getBoard, listBoards } from "@/lib/datac/boards";
 import { BoardApp } from "@/components/board/board-app";
 import { FocusTracker } from "@/components/workspaces/focus-tracker";
@@ -20,7 +15,7 @@ export async function generateMetadata({
 }) {
   const { id, boardId } = await params;
   const dir = await workspaceDir(id);
-  const board = await getBoard(id, dir, boardId);
+  const board = dir ? await getBoard(id, dir, boardId) : null;
   return { title: board ? `DataC | ${board.name}` : "DataC Workspace" };
 }
 
@@ -30,18 +25,17 @@ export default async function BoardPage({
   params: Promise<{ id: string; boardId: string }>;
 }) {
   const { id, boardId } = await params;
-  const exists = await workspaceExists(id);
-  const dir = exists ? await workspaceDir(id) : null;
-  const board = exists ? await getBoard(id, dir, boardId) : null;
-  if (!exists || !board) {
+  const dir = await workspaceDir(id);
+  const board = dir ? await getBoard(id, dir, boardId) : null;
+  if (!dir || !board) {
     return (
       <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
         <div className="text-4xl">🗒️</div>
         <h1 className="text-lg font-semibold">
-          {exists ? "Unknown board" : "Unknown workspace"}
+          {dir ? "Unknown board" : "Unknown workspace"}
         </h1>
         <p className="text-muted-foreground text-sm">
-          {exists
+          {dir
             ? "This board doesn't exist (it may have been deleted)."
             : "Run datac init in its folder, or pick another workspace."}
         </p>

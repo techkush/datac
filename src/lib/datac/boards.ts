@@ -15,7 +15,7 @@ const fsp = fs.promises;
 
 export const boardsDir = (dataDir: string) => path.join(dataDir, "boards");
 
-/* ---- board ops (Postgres system of record) -------------------------------
+/* ---- board ops (database is the system of record) ------------------------
  * Boards live in the `boards` table keyed by (workspaceId, boardId); every
  * content-changing save appends a BoardRevision snapshot, same as
  * documents. Pre-DB <dataC>/boards/*.json files are imported on first
@@ -84,10 +84,9 @@ const parseDate = (s: string | undefined | null) => {
 // One-time adoption of a pre-DB boards/<id>.json file into Postgres.
 async function importFileBoard(
   workspaceId: string,
-  dataDir: string | null,
+  dataDir: string,
   boardId: string,
 ): Promise<Board | null> {
-  if (!dataDir) return null; // cloud: no local folder to import from
   let b: BoardFile;
   try {
     b = JSON.parse(
@@ -132,8 +131,7 @@ async function importFileBoard(
 
 // Adopt every not-yet-imported board file. Boards the DB already knows
 // (even soft-deleted ones) are left alone.
-async function importFileBoards(workspaceId: string, dataDir: string | null) {
-  if (!dataDir) return; // cloud: nothing on local disk to adopt
+async function importFileBoards(workspaceId: string, dataDir: string) {
   let entries: string[] = [];
   try {
     entries = await fsp.readdir(boardsDir(dataDir));
@@ -160,7 +158,7 @@ async function importFileBoards(workspaceId: string, dataDir: string | null) {
 
 export async function listBoards(
   workspaceId: string,
-  dataDir: string | null,
+  dataDir: string,
 ): Promise<BoardSummary[]> {
   await importFileBoards(workspaceId, dataDir);
   const rows = await prisma.board.findMany({
@@ -185,7 +183,7 @@ export async function listBoards(
 
 export async function getBoard(
   workspaceId: string,
-  dataDir: string | null,
+  dataDir: string,
   id: string,
 ): Promise<(BoardFile & { id: string }) | null> {
   if (!safeId(id)) return null;
@@ -214,7 +212,7 @@ export interface SaveBoardInput {
 
 export async function saveBoard(
   workspaceId: string,
-  dataDir: string | null,
+  dataDir: string,
   id: string,
   board: SaveBoardInput,
 ) {
@@ -312,7 +310,7 @@ export async function saveBoard(
 // resolves and are treated as roots by consumers.
 export async function deleteBoard(
   workspaceId: string,
-  dataDir: string | null,
+  dataDir: string,
   id: string,
 ) {
   const existing = await prisma.board.findUnique({
@@ -335,9 +333,7 @@ export async function deleteBoard(
       }),
     ]);
   }
-  if (dataDir) {
-    try {
-      await fsp.unlink(path.join(boardsDir(dataDir), id + ".json"));
-    } catch {}
-  }
+  try {
+    await fsp.unlink(path.join(boardsDir(dataDir), id + ".json"));
+  } catch {}
 }
