@@ -8,12 +8,14 @@
 generator client {
   provider      = "prisma-client-js"
   output        = "../src/generated/prisma"
-  // "native" for local dev; the debian target matches the Docker runtime image.
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  binaryTargets = ["native"]
 }
 
+// Local SQLite: a single file (DATABASE_URL="file:/…/.datac/datac.db"), no
+// server or daemon. Enums and Json are enforced/stored at the Prisma layer
+// (supported on SQLite since Prisma 6.2).
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -291,8 +293,8 @@ model Doc {
   parent      String    @default("")
   orphaned    Boolean   @default(false)
   status      String    @default("")
-  blocks      Json      @default("[]")
-  comments    Json      @default("{}")
+  blocks      Json // always written explicitly by the app (no DB default: SQLite can't default a Json column)
+  comments    Json
   deletedAt   DateTime? // soft delete — revisions are kept for recovery
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @default(now())
@@ -330,8 +332,8 @@ model Board {
   name        String    @default("Untitled board")
   parent      String    @default("") // parent board id, "" = root
   viewport    Json? // last camera position
-  cards       Json      @default("[]")
-  arrows      Json      @default("[]")
+  cards       Json // always written explicitly by the app (no DB default)
+  arrows      Json
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @default(now())
