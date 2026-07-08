@@ -616,8 +616,8 @@ function CommentOverlay({
             type="button"
             data-dc-overlay
             title={`Comments (${count})`}
-            className="text-muted-foreground hover:text-foreground bg-background/80 absolute z-10 flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shadow-sm"
-            style={{ top: Math.max(0, top + 2), right: "-3.25rem" }}
+            className="text-muted-foreground hover:text-foreground bg-background/80 absolute z-10 flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shadow-xs"
+            style={{ top: Math.max(0, top + 2), right: "-4rem" }}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
