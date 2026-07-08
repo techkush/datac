@@ -88,6 +88,14 @@ const escapeHtml = (s: string) =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;",
   );
 
+// A doc icon is either an emoji (worth showing in exports) or a lucide icon
+// NAME like "FileText" (UI-only ASCII, must NOT print as text). Returns the
+// emoji + trailing space, or "" for a name/empty.
+const emojiIconPrefix = (icon?: string) =>
+  icon && [...icon].some((c) => (c.codePointAt(0) || 0) > 127)
+    ? icon + " "
+    : "";
+
 // Wrap exported body HTML in a standalone, self-contained document. `mode`
 // tunes the @page rules for PDF printing (paged = A4 pages, pageless = one
 // continuous page whose size is set just before printing).
@@ -96,15 +104,39 @@ function fullHtmlDoc(
   body: string,
   mode?: "paged" | "pageless",
 ): string {
+  // paged → A4 pages with breaks. pageless → one deterministic-width column
+  // (the @page size is set to the content box just before printing).
   const page =
-    mode === "paged" ? "@page { size: A4; margin: 16mm; }" : "";
+    mode === "paged"
+      ? "@page { size: A4; margin: 16mm; } body { max-width: none; margin: 0; padding: 18mm; }"
+      : mode === "pageless"
+        ? "body { width: 720px; max-width: none; margin: 0; padding: 32px; }"
+        : "";
+  const bg: Record<string, string> = {
+    gray: "#ebeced", brown: "#e9e5e3", red: "#fbe4e4", orange: "#f6e9d9",
+    yellow: "#fbf3db", green: "#ddedea", blue: "#ddebf1", purple: "#eae4f2",
+    pink: "#f4dfeb",
+  };
+  const fg: Record<string, string> = {
+    gray: "#9b9a97", brown: "#64473a", red: "#e03e3e", orange: "#d9730d",
+    yellow: "#dfab01", green: "#4d6461", blue: "#0b6e99", purple: "#6940a5",
+    pink: "#ad1a72",
+  };
+  const colorCss =
+    Object.entries(bg)
+      .map(([k, v]) => `[data-background-color=${k}]{background-color:${v};}`)
+      .join("") +
+    Object.entries(fg)
+      .map(([k, v]) => `[data-text-color=${k}]{color:${v};}`)
+      .join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
     title,
   )}</title><style>
 ${page}
 * { box-sizing: border-box; }
+/* Keep background highlights when printing to PDF. */
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; line-height: 1.6; max-width: 780px; margin: 0 auto; padding: 24px; }
-@media print { body { max-width: none; margin: 0; padding: 0; } }
 h1,h2,h3,h4,h5,h6 { line-height: 1.25; margin: 1.4em 0 0.5em; }
 img { max-width: 100%; height: auto; }
 pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow: auto; }
@@ -112,6 +144,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 blockquote { border-left: 3px solid #ddd; margin: 0.8em 0; padding-left: 1em; color: #555; }
 table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 6px 10px; }
 [data-text-alignment=center]{ text-align: center; } [data-text-alignment=right]{ text-align: right; } [data-text-alignment=justify]{ text-align: justify; }
+${colorCss}
 </style></head><body>${body}</body></html>`;
 }
 
@@ -486,7 +519,7 @@ export function EditorProvider({
         const doc = await client.get(pageId);
         if (!doc || doc.error) return "";
         const h = "#".repeat(Math.min(level, 6));
-        let out = `${h} ${doc.icon ? doc.icon + " " : ""}${doc.title || "Untitled"}\n\n`;
+        let out = `${h} ${emojiIconPrefix(doc.icon)}${doc.title || "Untitled"}\n\n`;
         const bn = isBlockNoteDoc(doc.blocks);
         const walk = async (blocks: Block[]) => {
           for (const b of blocks || []) {
@@ -550,7 +583,7 @@ export function EditorProvider({
         if (blocks.length && !isBlockNoteDoc(blocks))
           blocks = legacyToBlockNote(blocks) as unknown as Block[];
         const h = Math.min(level, 6);
-        let out = `<section><h${h}>${doc.icon ? escapeHtml(doc.icon) + " " : ""}${escapeHtml(
+        let out = `<section><h${h}>${emojiIconPrefix(doc.icon)}${escapeHtml(
           doc.title || "Untitled",
         )}</h${h}>`;
         // Emit runs of normal blocks together (preserves list grouping),
@@ -611,8 +644,10 @@ export function EditorProvider({
       const name = docs.find((d) => d.id === target)?.title || "Untitled";
       const html = fullHtmlDoc(name, await buildDocHtml(target), mode);
       const iframe = document.createElement("iframe");
+      // A real (offscreen) width is required so the content lays out at its
+      // true size — a 0-width iframe would mis-measure the pageless height.
       iframe.style.cssText =
-        "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+        "position:fixed;left:-10000px;top:0;width:900px;height:1200px;border:0;";
       document.body.appendChild(iframe);
       const idoc = iframe.contentDocument!;
       idoc.open();
@@ -629,16 +664,18 @@ export function EditorProvider({
         ),
       );
       if (mode === "pageless") {
-        // One tall page sized to the content (px → mm at 96dpi) + margin.
-        const px = idoc.body.scrollHeight;
-        const heightMm = Math.ceil((px / 96) * 25.4) + 24;
+        // One page sized exactly to the content box (px → mm at 96dpi), so
+        // the whole doc prints as a single continuous page.
+        const px2mm = (px: number) => Math.ceil((px / 96) * 25.4);
+        const w = px2mm(idoc.body.scrollWidth);
+        const h = px2mm(idoc.body.scrollHeight);
         const style = idoc.createElement("style");
-        style.textContent = `@page { size: 210mm ${heightMm}mm; margin: 12mm; }`;
+        style.textContent = `@page { size: ${w}mm ${h}mm; margin: 0; }`;
         idoc.head.appendChild(style);
       }
-      const w = iframe.contentWindow!;
-      w.focus();
-      w.print();
+      const win = iframe.contentWindow!;
+      win.focus();
+      win.print();
       setTimeout(() => iframe.remove(), 1000);
     },
     [buildDocHtml, docs, saveNow],
