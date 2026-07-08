@@ -105,8 +105,17 @@ function BoardsMenu() {
 }
 
 export function Topbar() {
-  const { docs, currentId, meta, saveState, openDoc, setMeta, exportMarkdown } =
-    useEditor();
+  const {
+    docs,
+    currentId,
+    meta,
+    saveState,
+    openDoc,
+    setMeta,
+    exportMarkdown,
+    exportHtml,
+    exportPdf,
+  } = useEditor();
 
   // breadcrumb: walk up the parent chain
   const chain: { id: string; title: string }[] = [];
@@ -176,15 +185,35 @@ export function Topbar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7"
-              onClick={() => exportMarkdown()}
-              title="Export as Markdown (includes sub-pages)"
-            >
-              <Download className="size-4" /> Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5"
+                  title="Export this page (includes sub-pages)"
+                >
+                  <Download className="size-4" /> Export
+                  <ChevronDown className="size-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => exportMarkdown()}>
+                  Markdown (.md)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportHtml()}>
+                  HTML (.html)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportPdf(undefined, "paged")}>
+                  PDF — paged (A4)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => exportPdf(undefined, "pageless")}
+                >
+                  PDF — pageless
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Separator orientation="vertical" className="!h-5" />
             <SaveStatus state={saveState} />
           </>

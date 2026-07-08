@@ -197,10 +197,17 @@ export function BlockNoteEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The store pulls the live document at save time.
+  // The store pulls the live document at save time, and converts blocks to
+  // HTML (for HTML/PDF export) via the editor's schema-aware converter.
   React.useEffect(() => {
     store.setSerializer(() => editor.document as unknown as Block[]);
-    return () => store.setSerializer(null);
+    store.setHtmlExporter((blocks) =>
+      editor.blocksToHTMLLossy(blocks as never),
+    );
+    return () => {
+      store.setSerializer(null);
+      store.setHtmlExporter(null);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
@@ -550,19 +557,36 @@ function CommentOverlay({
   );
 
   // Block top offsets relative to the wrapper (stable while scrolling,
-  // recomputed after edits/resizes).
+  // recomputed after edits/resizes). On initial load the BlockNote DOM
+  // mounts asynchronously, so retry across a few frames until every
+  // commented block is found — otherwise the icons never appear on refresh.
   React.useLayoutEffect(() => {
     const el = wrapperRef.current;
-    if (!el) return;
-    const base = el.getBoundingClientRect().top;
-    const next: Record<string, number> = {};
-    for (const id of ids) {
-      const b = el.querySelector(
-        `.bn-block-outer[data-id="${CSS.escape(id)}"]`,
-      ) as HTMLElement | null;
-      if (b) next[id] = b.getBoundingClientRect().top - base;
+    if (!el || !ids.length) {
+      setTops({});
+      return;
     }
-    setTops(next);
+    let raf = 0;
+    let attempts = 0;
+    const measure = () => {
+      const base = el.getBoundingClientRect().top;
+      const next: Record<string, number> = {};
+      let missing = false;
+      for (const id of ids) {
+        const b = el.querySelector(
+          `.bn-block-outer[data-id="${CSS.escape(id)}"]`,
+        ) as HTMLElement | null;
+        if (b) next[id] = b.getBoundingClientRect().top - base;
+        else missing = true;
+      }
+      setTops(next);
+      if (missing && attempts < 30) {
+        attempts++;
+        raf = requestAnimationFrame(measure);
+      }
+    };
+    measure();
+    return () => cancelAnimationFrame(raf);
   }, [ids, tick, resizeTick, wrapperRef]);
 
   return (

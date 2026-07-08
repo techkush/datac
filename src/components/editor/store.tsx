@@ -51,9 +51,13 @@ interface EditorContextValue {
   setComments: (c: Record<string, CommentEntry[]>) => void;
   saveNow: (keepalive?: boolean) => Promise<void>;
   exportMarkdown: (id?: string) => Promise<void>;
+  exportHtml: (id?: string) => Promise<void>;
+  exportPdf: (id: string | undefined, mode: "paged" | "pageless") => Promise<void>;
   // The editor registers a serializer that reads live block content from the
   // DOM; the store calls it when building the doc to save.
   setSerializer: (fn: (() => Block[]) | null) => void;
+  // The editor registers a blocks→HTML converter for the HTML/PDF exporters.
+  setHtmlExporter: (fn: ((blocks: Block[]) => string) | null) => void;
   scheduleSave: () => void;
 }
 
@@ -78,6 +82,38 @@ const EMPTY_META: DocMeta = {
   parent: "",
   status: "",
 };
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>]/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;",
+  );
+
+// Wrap exported body HTML in a standalone, self-contained document. `mode`
+// tunes the @page rules for PDF printing (paged = A4 pages, pageless = one
+// continuous page whose size is set just before printing).
+function fullHtmlDoc(
+  title: string,
+  body: string,
+  mode?: "paged" | "pageless",
+): string {
+  const page =
+    mode === "paged" ? "@page { size: A4; margin: 16mm; }" : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+    title,
+  )}</title><style>
+${page}
+* { box-sizing: border-box; }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; line-height: 1.6; max-width: 780px; margin: 0 auto; padding: 24px; }
+@media print { body { max-width: none; margin: 0; padding: 0; } }
+h1,h2,h3,h4,h5,h6 { line-height: 1.25; margin: 1.4em 0 0.5em; }
+img { max-width: 100%; height: auto; }
+pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow: auto; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+blockquote { border-left: 3px solid #ddd; margin: 0.8em 0; padding-left: 1em; color: #555; }
+table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 6px 10px; }
+[data-text-alignment=center]{ text-align: center; } [data-text-alignment=right]{ text-align: right; } [data-text-alignment=justify]{ text-align: justify; }
+</style></head><body>${body}</body></html>`;
+}
 
 export function EditorProvider({
   ws,
@@ -123,6 +159,19 @@ export function EditorProvider({
   const setSerializer = React.useCallback((fn: (() => Block[]) | null) => {
     serializerRef.current = fn;
   }, []);
+
+  // The live editor registers a blocks→HTML converter here (BlockNote's
+  // blocksToHTMLLossy, which understands the custom schema). Used by the
+  // HTML and PDF exporters.
+  const htmlExporterRef = React.useRef<((blocks: Block[]) => string) | null>(
+    null,
+  );
+  const setHtmlExporter = React.useCallback(
+    (fn: ((blocks: Block[]) => string) | null) => {
+      htmlExporterRef.current = fn;
+    },
+    [],
+  );
 
   const buildDocFields = React.useCallback(() => {
     const m = metaRef.current;
@@ -271,6 +320,13 @@ export function EditorProvider({
       commentsRef.current = nextComments;
       currentIdRef.current = id;
       dirtyRef.current = false;
+      // Reflect the open page in the URL (?doc=<id>) so a browser refresh
+      // reopens this page instead of falling back to the first one.
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("doc", id);
+        window.history.replaceState(null, "", url.toString());
+      } catch {}
       setCurrentId(id);
       setMetaState(nextMeta);
       setBlocksState(nextBlocks);
@@ -471,6 +527,123 @@ export function EditorProvider({
     [client, docs, saveNow],
   );
 
+  // Build the export HTML body for a page and its nested sub-pages, using the
+  // live editor's blocks→HTML converter (registered via setHtmlExporter).
+  const buildDocHtml = React.useCallback(
+    async (target: string): Promise<string> => {
+      const toHtml = htmlExporterRef.current;
+      const seen = new Set<string>();
+      const pageToHtml = async (
+        pageId: string,
+        level: number,
+      ): Promise<string> => {
+        if (seen.has(pageId)) return "";
+        seen.add(pageId);
+        const doc = await client.get(pageId);
+        if (!doc || doc.error) return "";
+        let blocks: Block[] =
+          doc.format === "markdown"
+            ? parseMarkdownToBlocks(doc.content || "", doc.styles || {})
+            : Array.isArray(doc.blocks)
+              ? doc.blocks
+              : [];
+        if (blocks.length && !isBlockNoteDoc(blocks))
+          blocks = legacyToBlockNote(blocks) as unknown as Block[];
+        const h = Math.min(level, 6);
+        let out = `<section><h${h}>${doc.icon ? escapeHtml(doc.icon) + " " : ""}${escapeHtml(
+          doc.title || "Untitled",
+        )}</h${h}>`;
+        // Emit runs of normal blocks together (preserves list grouping),
+        // recursing into child-page blocks to inline sub-pages in place.
+        let run: Block[] = [];
+        const flush = () => {
+          if (run.length && toHtml) out += toHtml(run);
+          run = [];
+        };
+        for (const b of blocks) {
+          const childId =
+            b.type === "page"
+              ? ((b.props as { pageId?: string } | undefined)?.pageId ??
+                (b.pageId as string | undefined))
+              : undefined;
+          if (childId) {
+            flush();
+            out += await pageToHtml(childId, level + 1);
+          } else {
+            run.push(b);
+          }
+        }
+        flush();
+        return out + "</section>";
+      };
+      return pageToHtml(target, 1);
+    },
+    [client],
+  );
+
+  const exportHtml = React.useCallback(
+    async (id?: string) => {
+      const target = id || currentIdRef.current;
+      if (!target) return;
+      if (dirtyRef.current) await saveNow();
+      const name = docs.find((d) => d.id === target)?.title || "Untitled";
+      const html = fullHtmlDoc(name, await buildDocHtml(target));
+      const blob = new Blob([html], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name.replace(/[^\w-]+/g, "_").slice(0, 60) + ".html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    },
+    [buildDocHtml, docs, saveNow],
+  );
+
+  // Print to PDF via a hidden iframe → the browser's "Save as PDF". In
+  // pageless mode the page height is set to the content height so the PDF is
+  // one continuous page; paged mode uses A4 with page breaks.
+  const exportPdf = React.useCallback(
+    async (id: string | undefined, mode: "paged" | "pageless") => {
+      const target = id || currentIdRef.current;
+      if (!target) return;
+      if (dirtyRef.current) await saveNow();
+      const name = docs.find((d) => d.id === target)?.title || "Untitled";
+      const html = fullHtmlDoc(name, await buildDocHtml(target), mode);
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText =
+        "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      document.body.appendChild(iframe);
+      const idoc = iframe.contentDocument!;
+      idoc.open();
+      idoc.write(html);
+      idoc.close();
+      // Wait for images to load so nothing is cut off / missing.
+      await Promise.all(
+        Array.from(idoc.images).map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((r) => {
+                img.onload = img.onerror = () => r(null);
+              }),
+        ),
+      );
+      if (mode === "pageless") {
+        // One tall page sized to the content (px → mm at 96dpi) + margin.
+        const px = idoc.body.scrollHeight;
+        const heightMm = Math.ceil((px / 96) * 25.4) + 24;
+        const style = idoc.createElement("style");
+        style.textContent = `@page { size: 210mm ${heightMm}mm; margin: 12mm; }`;
+        idoc.head.appendChild(style);
+      }
+      const w = iframe.contentWindow!;
+      w.focus();
+      w.print();
+      setTimeout(() => iframe.remove(), 1000);
+    },
+    [buildDocHtml, docs, saveNow],
+  );
+
   // Save on unload / tab hide.
   React.useEffect(() => {
     const flush = () => {
@@ -537,7 +710,10 @@ export function EditorProvider({
     setComments,
     saveNow,
     exportMarkdown,
+    exportHtml,
+    exportPdf,
     setSerializer,
+    setHtmlExporter,
     scheduleSave: queueSave,
   };
 
