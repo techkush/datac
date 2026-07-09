@@ -51,9 +51,13 @@ interface EditorContextValue {
   setComments: (c: Record<string, CommentEntry[]>) => void;
   saveNow: (keepalive?: boolean) => Promise<void>;
   exportMarkdown: (id?: string) => Promise<void>;
+  exportHtml: (id?: string) => Promise<void>;
+  exportPdf: (id: string | undefined, mode: "paged" | "pageless") => Promise<void>;
   // The editor registers a serializer that reads live block content from the
   // DOM; the store calls it when building the doc to save.
   setSerializer: (fn: (() => Block[]) | null) => void;
+  // The editor registers a blocks→HTML converter for the HTML/PDF exporters.
+  setHtmlExporter: (fn: ((blocks: Block[]) => string) | null) => void;
   scheduleSave: () => void;
 }
 
@@ -78,6 +82,71 @@ const EMPTY_META: DocMeta = {
   parent: "",
   status: "",
 };
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>]/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;",
+  );
+
+// A doc icon is either an emoji (worth showing in exports) or a lucide icon
+// NAME like "FileText" (UI-only ASCII, must NOT print as text). Returns the
+// emoji + trailing space, or "" for a name/empty.
+const emojiIconPrefix = (icon?: string) =>
+  icon && [...icon].some((c) => (c.codePointAt(0) || 0) > 127)
+    ? icon + " "
+    : "";
+
+// Wrap exported body HTML in a standalone, self-contained document. `mode`
+// tunes the @page rules for PDF printing (paged = A4 pages, pageless = one
+// continuous page whose size is set just before printing).
+function fullHtmlDoc(
+  title: string,
+  body: string,
+  mode?: "paged" | "pageless",
+): string {
+  // paged → A4 pages with breaks. pageless → one deterministic-width column
+  // (the @page size is set to the content box just before printing).
+  const page =
+    mode === "paged"
+      ? "@page { size: A4; margin: 16mm; } body { max-width: none; margin: 0; padding: 18mm; }"
+      : mode === "pageless"
+        ? "body { width: 720px; max-width: none; margin: 0; padding: 32px; }"
+        : "";
+  const bg: Record<string, string> = {
+    gray: "#ebeced", brown: "#e9e5e3", red: "#fbe4e4", orange: "#f6e9d9",
+    yellow: "#fbf3db", green: "#ddedea", blue: "#ddebf1", purple: "#eae4f2",
+    pink: "#f4dfeb",
+  };
+  const fg: Record<string, string> = {
+    gray: "#9b9a97", brown: "#64473a", red: "#e03e3e", orange: "#d9730d",
+    yellow: "#dfab01", green: "#4d6461", blue: "#0b6e99", purple: "#6940a5",
+    pink: "#ad1a72",
+  };
+  const colorCss =
+    Object.entries(bg)
+      .map(([k, v]) => `[data-background-color=${k}]{background-color:${v};}`)
+      .join("") +
+    Object.entries(fg)
+      .map(([k, v]) => `[data-text-color=${k}]{color:${v};}`)
+      .join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+    title,
+  )}</title><style>
+${page}
+* { box-sizing: border-box; }
+/* Keep background highlights when printing to PDF. */
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; line-height: 1.6; max-width: 780px; margin: 0 auto; padding: 24px; }
+h1,h2,h3,h4,h5,h6 { line-height: 1.25; margin: 1.4em 0 0.5em; }
+img { max-width: 100%; height: auto; }
+pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow: auto; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+blockquote { border-left: 3px solid #ddd; margin: 0.8em 0; padding-left: 1em; color: #555; }
+table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 6px 10px; }
+[data-text-alignment=center]{ text-align: center; } [data-text-alignment=right]{ text-align: right; } [data-text-alignment=justify]{ text-align: justify; }
+${colorCss}
+</style></head><body>${body}</body></html>`;
+}
 
 export function EditorProvider({
   ws,
@@ -123,6 +192,19 @@ export function EditorProvider({
   const setSerializer = React.useCallback((fn: (() => Block[]) | null) => {
     serializerRef.current = fn;
   }, []);
+
+  // The live editor registers a blocks→HTML converter here (BlockNote's
+  // blocksToHTMLLossy, which understands the custom schema). Used by the
+  // HTML and PDF exporters.
+  const htmlExporterRef = React.useRef<((blocks: Block[]) => string) | null>(
+    null,
+  );
+  const setHtmlExporter = React.useCallback(
+    (fn: ((blocks: Block[]) => string) | null) => {
+      htmlExporterRef.current = fn;
+    },
+    [],
+  );
 
   const buildDocFields = React.useCallback(() => {
     const m = metaRef.current;
@@ -271,6 +353,13 @@ export function EditorProvider({
       commentsRef.current = nextComments;
       currentIdRef.current = id;
       dirtyRef.current = false;
+      // Reflect the open page in the URL (?doc=<id>) so a browser refresh
+      // reopens this page instead of falling back to the first one.
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("doc", id);
+        window.history.replaceState(null, "", url.toString());
+      } catch {}
       setCurrentId(id);
       setMetaState(nextMeta);
       setBlocksState(nextBlocks);
@@ -430,7 +519,7 @@ export function EditorProvider({
         const doc = await client.get(pageId);
         if (!doc || doc.error) return "";
         const h = "#".repeat(Math.min(level, 6));
-        let out = `${h} ${doc.icon ? doc.icon + " " : ""}${doc.title || "Untitled"}\n\n`;
+        let out = `${h} ${emojiIconPrefix(doc.icon)}${doc.title || "Untitled"}\n\n`;
         const bn = isBlockNoteDoc(doc.blocks);
         const walk = async (blocks: Block[]) => {
           for (const b of blocks || []) {
@@ -469,6 +558,127 @@ export function EditorProvider({
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     },
     [client, docs, saveNow],
+  );
+
+  // Build the export HTML body for a page and its nested sub-pages, using the
+  // live editor's blocks→HTML converter (registered via setHtmlExporter).
+  const buildDocHtml = React.useCallback(
+    async (target: string): Promise<string> => {
+      const toHtml = htmlExporterRef.current;
+      const seen = new Set<string>();
+      const pageToHtml = async (
+        pageId: string,
+        level: number,
+      ): Promise<string> => {
+        if (seen.has(pageId)) return "";
+        seen.add(pageId);
+        const doc = await client.get(pageId);
+        if (!doc || doc.error) return "";
+        let blocks: Block[] =
+          doc.format === "markdown"
+            ? parseMarkdownToBlocks(doc.content || "", doc.styles || {})
+            : Array.isArray(doc.blocks)
+              ? doc.blocks
+              : [];
+        if (blocks.length && !isBlockNoteDoc(blocks))
+          blocks = legacyToBlockNote(blocks) as unknown as Block[];
+        const h = Math.min(level, 6);
+        let out = `<section><h${h}>${emojiIconPrefix(doc.icon)}${escapeHtml(
+          doc.title || "Untitled",
+        )}</h${h}>`;
+        // Emit runs of normal blocks together (preserves list grouping),
+        // recursing into child-page blocks to inline sub-pages in place.
+        let run: Block[] = [];
+        const flush = () => {
+          if (run.length && toHtml) out += toHtml(run);
+          run = [];
+        };
+        for (const b of blocks) {
+          const childId =
+            b.type === "page"
+              ? ((b.props as { pageId?: string } | undefined)?.pageId ??
+                (b.pageId as string | undefined))
+              : undefined;
+          if (childId) {
+            flush();
+            out += await pageToHtml(childId, level + 1);
+          } else {
+            run.push(b);
+          }
+        }
+        flush();
+        return out + "</section>";
+      };
+      return pageToHtml(target, 1);
+    },
+    [client],
+  );
+
+  const exportHtml = React.useCallback(
+    async (id?: string) => {
+      const target = id || currentIdRef.current;
+      if (!target) return;
+      if (dirtyRef.current) await saveNow();
+      const name = docs.find((d) => d.id === target)?.title || "Untitled";
+      const html = fullHtmlDoc(name, await buildDocHtml(target));
+      const blob = new Blob([html], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name.replace(/[^\w-]+/g, "_").slice(0, 60) + ".html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    },
+    [buildDocHtml, docs, saveNow],
+  );
+
+  // Print to PDF via a hidden iframe → the browser's "Save as PDF". In
+  // pageless mode the page height is set to the content height so the PDF is
+  // one continuous page; paged mode uses A4 with page breaks.
+  const exportPdf = React.useCallback(
+    async (id: string | undefined, mode: "paged" | "pageless") => {
+      const target = id || currentIdRef.current;
+      if (!target) return;
+      if (dirtyRef.current) await saveNow();
+      const name = docs.find((d) => d.id === target)?.title || "Untitled";
+      const html = fullHtmlDoc(name, await buildDocHtml(target), mode);
+      const iframe = document.createElement("iframe");
+      // A real (offscreen) width is required so the content lays out at its
+      // true size — a 0-width iframe would mis-measure the pageless height.
+      iframe.style.cssText =
+        "position:fixed;left:-10000px;top:0;width:900px;height:1200px;border:0;";
+      document.body.appendChild(iframe);
+      const idoc = iframe.contentDocument!;
+      idoc.open();
+      idoc.write(html);
+      idoc.close();
+      // Wait for images to load so nothing is cut off / missing.
+      await Promise.all(
+        Array.from(idoc.images).map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((r) => {
+                img.onload = img.onerror = () => r(null);
+              }),
+        ),
+      );
+      if (mode === "pageless") {
+        // One page sized exactly to the content box (px → mm at 96dpi), so
+        // the whole doc prints as a single continuous page.
+        const px2mm = (px: number) => Math.ceil((px / 96) * 25.4);
+        const w = px2mm(idoc.body.scrollWidth);
+        const h = px2mm(idoc.body.scrollHeight);
+        const style = idoc.createElement("style");
+        style.textContent = `@page { size: ${w}mm ${h}mm; margin: 0; }`;
+        idoc.head.appendChild(style);
+      }
+      const win = iframe.contentWindow!;
+      win.focus();
+      win.print();
+      setTimeout(() => iframe.remove(), 1000);
+    },
+    [buildDocHtml, docs, saveNow],
   );
 
   // Save on unload / tab hide.
@@ -537,7 +747,10 @@ export function EditorProvider({
     setComments,
     saveNow,
     exportMarkdown,
+    exportHtml,
+    exportPdf,
     setSerializer,
+    setHtmlExporter,
     scheduleSave: queueSave,
   };
 

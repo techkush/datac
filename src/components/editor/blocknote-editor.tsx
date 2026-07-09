@@ -197,10 +197,17 @@ export function BlockNoteEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The store pulls the live document at save time.
+  // The store pulls the live document at save time, and converts blocks to
+  // HTML (for HTML/PDF export) via the editor's schema-aware converter.
   React.useEffect(() => {
     store.setSerializer(() => editor.document as unknown as Block[]);
-    return () => store.setSerializer(null);
+    store.setHtmlExporter((blocks) =>
+      editor.blocksToHTMLLossy(blocks as never),
+    );
+    return () => {
+      store.setSerializer(null);
+      store.setHtmlExporter(null);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
@@ -539,10 +546,24 @@ function CommentOverlay({
   const [resizeTick, setResizeTick] = React.useState(0);
 
   React.useEffect(() => {
-    const onResize = () => setResizeTick((t) => t + 1);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    const bump = () => setResizeTick((t) => t + 1);
+    window.addEventListener("resize", bump);
+    // The BlockNote editor mounts and renders its blocks asynchronously
+    // (dynamic import, then ProseMirror init). Observing the wrapper's size
+    // re-measures icon positions the moment the commented blocks appear, so
+    // the icons show reliably on a fresh page load / refresh — not just a
+    // fixed number of frames after the comments data arrives.
+    const el = wrapperRef.current;
+    const ro =
+      el && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(bump)
+        : null;
+    if (el && ro) ro.observe(el);
+    return () => {
+      window.removeEventListener("resize", bump);
+      ro?.disconnect();
+    };
+  }, [wrapperRef]);
 
   const ids = React.useMemo(
     () => Object.keys(comments).filter((id) => comments[id]?.length),
@@ -550,19 +571,36 @@ function CommentOverlay({
   );
 
   // Block top offsets relative to the wrapper (stable while scrolling,
-  // recomputed after edits/resizes).
+  // recomputed after edits/resizes). On initial load the BlockNote DOM
+  // mounts asynchronously, so retry across a few frames until every
+  // commented block is found — otherwise the icons never appear on refresh.
   React.useLayoutEffect(() => {
     const el = wrapperRef.current;
-    if (!el) return;
-    const base = el.getBoundingClientRect().top;
-    const next: Record<string, number> = {};
-    for (const id of ids) {
-      const b = el.querySelector(
-        `.bn-block-outer[data-id="${CSS.escape(id)}"]`,
-      ) as HTMLElement | null;
-      if (b) next[id] = b.getBoundingClientRect().top - base;
+    if (!el || !ids.length) {
+      setTops({});
+      return;
     }
-    setTops(next);
+    let raf = 0;
+    let attempts = 0;
+    const measure = () => {
+      const base = el.getBoundingClientRect().top;
+      const next: Record<string, number> = {};
+      let missing = false;
+      for (const id of ids) {
+        const b = el.querySelector(
+          `.bn-block-outer[data-id="${CSS.escape(id)}"]`,
+        ) as HTMLElement | null;
+        if (b) next[id] = b.getBoundingClientRect().top - base;
+        else missing = true;
+      }
+      setTops(next);
+      if (missing && attempts < 30) {
+        attempts++;
+        raf = requestAnimationFrame(measure);
+      }
+    };
+    measure();
+    return () => cancelAnimationFrame(raf);
   }, [ids, tick, resizeTick, wrapperRef]);
 
   return (
@@ -578,8 +616,8 @@ function CommentOverlay({
             type="button"
             data-dc-overlay
             title={`Comments (${count})`}
-            className="text-muted-foreground hover:text-foreground bg-background/80 absolute z-10 flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shadow-sm"
-            style={{ top: Math.max(0, top + 2), right: "-3.25rem" }}
+            className="text-muted-foreground hover:text-foreground bg-background/80 absolute z-10 flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shadow-xs"
+            style={{ top: Math.max(0, top + 2), right: "-4rem" }}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
