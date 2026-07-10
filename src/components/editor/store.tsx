@@ -144,6 +144,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 blockquote { border-left: 3px solid #ddd; margin: 0.8em 0; padding-left: 1em; color: #555; }
 table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 6px 10px; }
 [data-text-alignment=center]{ text-align: center; } [data-text-alignment=right]{ text-align: right; } [data-text-alignment=justify]{ text-align: justify; }
+/* Checklist items: BlockNote emits <li><input type=checkbox><p>text</p></li> —
+   without this the <p> (a block element) drops to its own line below the
+   checkbox, and the <li> shows a default bullet alongside it. */
+li:has(> input[type=checkbox]) { list-style: none; display: flex; align-items: baseline; gap: 0.5em; }
+li:has(> input[type=checkbox]) > p { margin: 0; }
+li input[type=checkbox] { margin: 0; flex-shrink: 0; }
 ${colorCss}
 </style></head><body>${body}</body></html>`;
 }
