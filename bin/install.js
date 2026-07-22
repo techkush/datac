@@ -63,6 +63,10 @@ try {
   copyDir(path.join(REPO, '.next', 'static'), path.join(APP, '.next', 'static'));
   if (fs.existsSync(path.join(REPO, 'public')))
     copyDir(path.join(REPO, 'public'), path.join(APP, 'public'));
+  // prisma migrations — the server applies these to a fresh ~/.datac/datac.db
+  // at startup (src/lib/db/bootstrap.ts); without them a new machine has an
+  // empty database and every page fails to load
+  copyDir(path.join(REPO, 'prisma', 'migrations'), path.join(APP, 'prisma', 'migrations'));
   // the CLI + icons
   copyDir(path.join(REPO, 'bin'), path.join(APP, 'bin'));
   if (fs.existsSync(path.join(REPO, 'assets')))
