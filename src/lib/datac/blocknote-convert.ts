@@ -6,12 +6,15 @@
 import type { Block } from "./types";
 
 /* ---- format detection --------------------------------------------------
- * BlockNote blocks always carry `props`/`content`/`children`; legacy blocks
- * never do (they use `html`, `cols`, `tex`, top-level `pageId`, …). */
+ * BlockNote blocks always serialize with a `children` array (and inline
+ * blocks with a `content` array); legacy blocks never have either — they
+ * use `html`, `cols`, `tex`, top-level `pageId`, …. `props` is NOT a
+ * BlockNote signal: legacy todo blocks carry `props.checked` and colored
+ * legacy blocks carry `props.tc`/`props.bg`, and treating those as
+ * BlockNote skips the conversion and crashes the editor. */
 export function isBlockNoteBlock(b: Block | undefined): boolean {
   if (!b) return false;
   return (
-    typeof b.props === "object" ||
     Array.isArray((b as { content?: unknown }).content) ||
     Array.isArray((b as { children?: unknown }).children)
   );
